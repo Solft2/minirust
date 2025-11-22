@@ -1,0 +1,10 @@
+[package]
+name = "minirust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+flate2 = "1.1.5"
+sha1 = "0.10.6"
+hex = "0.4"
