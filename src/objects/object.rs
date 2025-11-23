@@ -1,5 +1,5 @@
-pub trait RGitObject<'a> {
-    fn hash(&self) -> &str;
-    fn serialize(&self) -> &'a [u8];
-    fn deserialize(&mut self, object_bytes: &'a [u8]);
+pub trait RGitObject {
+    fn hash(&self) -> String;
+    fn serialize(&self) -> Vec<u8>;
+    fn deserialize(&mut self, object_bytes: Vec<u8>);
 }
