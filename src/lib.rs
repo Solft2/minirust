@@ -5,18 +5,16 @@ pub struct Repository{
     pub gitdir: PathBuf,  //pasta .git
 }
 
-
-// Exemplo: Repository::new("meu_projeto") 
-// Aponta para: worktree = "meu_projeto"/gitdir = "meu_projeto/.git"
 impl Repository {
+    const RGITDIR : &'static str = ".rgit";
+
     pub fn new(path: &Path) -> Self {
         Repository {
             worktree: path.to_path_buf(),
-            gitdir: path.join(".git"),
+            gitdir: path.join(Self::RGITDIR),
         }
     }
-//Exemplo: repo.repository_path(&["objects", "ab", "c123ef"])
-//Transforma em = meu_projeto/.git/objects/ab/c123ef
+
     pub fn repository_path(&self, partes: &[&str]) -> PathBuf {
         let mut path = self.gitdir.clone();
         for p in partes {
@@ -25,8 +23,14 @@ impl Repository {
         path
     }
 
+    pub fn get_rgitdir(&self) -> Option<PathBuf> {
+        if self.gitdir.exists() && self.gitdir.is_dir() {
+            Some(self.gitdir.clone())
+        } else {
+            None
+        }
+    }
 
-//
     pub fn repository_dir(&self, partes: &[&str], mkdir: bool) -> Option<PathBuf> {
         let path = self.repository_path(partes);
         if path.exists() {
