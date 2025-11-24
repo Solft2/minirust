@@ -5,12 +5,14 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::Repository;
 use crate::objects::{BlobObject, RGitObject};
 
+/// Uma entrada da staging area
 pub struct StagingEntry {
     pub path: PathBuf,
     pub hash: String
 }
 
 impl StagingEntry {
+    /// Converte a entrada de staging em um array de bytes para ser escrito no arquivo de índice
     pub fn as_bytes(&self) -> Vec<u8> {
         let mut entry_str: String = String::new();
         entry_str.push_str(self.path.to_str().unwrap());
@@ -21,6 +23,11 @@ impl StagingEntry {
     }
 }
 
+/// Representa a área de staging, onde os arquivos alterados vão antes de serem comitados.
+/// 
+/// A implementação é através de um arquivo que mantém um mapeamento de caminho -> hash do objeto.
+/// 
+/// Quando o usuário adicionar um arquivo em staging (comando add), devemos atualizar a entrada correspondente
 pub struct StagingArea<'a> {
     pub entries: HashMap<String, StagingEntry>,
     pub repo: &'a mut Repository
@@ -29,6 +36,7 @@ pub struct StagingArea<'a> {
 impl<'a> StagingArea<'a> {
     const INDEX_FILE: &'static str = "index";
 
+    /// Carrega a área de staging do arquivo `index`
     pub fn new(repo: &'a mut Repository) -> Self {
         let index_file_path = repo.gitdir.join(Self::INDEX_FILE);
 
@@ -53,6 +61,7 @@ impl<'a> StagingArea<'a> {
         StagingArea { entries, repo }
     }
 
+    /// Atualiza a entrada de um arquivo. Cria uma caso ela não exista
     pub fn update_or_create_entry(&mut self, file_path: &PathBuf) {
         let file = File::open(file_path).unwrap();
         let mut content: Vec<u8> = Vec::new();
@@ -70,6 +79,9 @@ impl<'a> StagingArea<'a> {
         self.entries.insert(file_path.to_str().unwrap().to_string(), new_entry);
     }
 
+    /// Salva o estado da área de staging no arquivo de índice.
+    /// 
+    /// Este método consome a instância da área de staging, precisando criar uma nova.
     pub fn save(self) {
         let index_file_path = self.repo.gitdir.join(Self::INDEX_FILE);
         let mut index_file = File::create(index_file_path).expect("Esperado criar o arquivo de índice");

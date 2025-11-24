@@ -1,5 +1,6 @@
 use sha1::{Digest, Sha1};
 
+/// Hash em uma sequência de bytes
 pub fn sha1sum(bytes: &[u8]) -> String {
     let mut hasher = Sha1::new();
     hasher.update(bytes);

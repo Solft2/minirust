@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use crate::staging::StagingArea;
 use crate::Repository;
 
+/// Adiciona um arquivo na área de staging
 pub fn cmd_add() {
     let file_path = PathBuf::from("teste.txt");
 
