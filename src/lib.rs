@@ -1,4 +1,5 @@
-use std::path::{Path, PathBuf}; // path caminho imutavel pathbuf caminho mutavel
+use std::{fs::File, io::Write, path::{Path, PathBuf}}; // path caminho imutavel pathbuf caminho mutavel
+use crate::objects::RGitObject;
 
 pub struct Repository{
     pub worktree: PathBuf, // pasta geral
@@ -53,7 +54,21 @@ impl Repository {
             panic!("Não foi possível criar o diretório do arquivo!");
         }
     }
+
+    pub fn create_object<T : RGitObject>(&mut self, object: &T) {
+        let hash = object.hash();
+        let (dir, file_name) = hash.split_at(2);
+
+        let path = self.repository_file(&["objects", dir, file_name], true);
+
+        let mut file = File::create(path).expect("Erro ao criar o objeto.");
+        file.write_all(&object.serialize()).expect("Erro ao escrever no arquivo.");
+    }
 }
+
 pub mod commands;
+pub mod staging;
+pub mod objects;
+pub mod utils;
 
 pub use commands::cli_main;

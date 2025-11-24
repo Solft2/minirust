@@ -6,6 +6,7 @@ pub mod branch;
 pub mod commit;
 pub mod log;
 pub mod merge;
+pub mod add;
 use clap::{Parser, Subcommand};
 
 
@@ -23,6 +24,7 @@ pub enum Commands {
     Branch,
     Commit,
     Merge,
+    Add,
     HashRust {
         #[arg(short, long)]
         write: bool,
@@ -42,6 +44,7 @@ pub fn cli_main() {
         Branch => branch::cmd_branch(),
         Commit => commit::cmd_commit(),
         Merge => merge::cmd_merge(),
+        Add => add::cmd_add(),
         Commands::HashRust { write, file } => hash_rust::cmd_hash_object(&file, write),
         CatFile { hash } => cat_file::cmd_cat_file(&hash),
         WriteTree => tree_rust::cmd_write_tree(),

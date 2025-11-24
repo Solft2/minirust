@@ -27,6 +27,7 @@ fn create_repo(repo: &Repository) {
     repo.repository_dir(&["refs"], true);
     repo.repository_dir(&["refs", "heads"], true);
     repo.repository_dir(&["refs", "tags"], true);
+    repo.repository_file(&["index"], true);
 
     write_file(repo.repository_file(&["description"], true),
         "Repositório sem nome. Edite este arquivo para nomear.\n");
