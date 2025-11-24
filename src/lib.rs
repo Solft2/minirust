@@ -1,4 +1,5 @@
 use std::{fs::File, io::Write, path::{Path, PathBuf}};
+use flate2::write::ZlibEncoder;
 use crate::objects::RGitObject;
 
 /// Estrutura que representa o repositório do projeto
@@ -90,6 +91,12 @@ impl Repository {
     pub fn create_object<T : RGitObject>(&mut self, object: &T) {
         let hash = object.hash();
         let (dir, file_name) = hash.split_at(2);
+
+        let path = self.repository_file(&["objects", dir, file_name], false);
+
+        if path.exists() {
+            return;
+        }
 
         let path = self.repository_file(&["objects", dir, file_name], true);
 
