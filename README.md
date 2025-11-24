@@ -12,3 +12,12 @@ Para rodar um comando:
 ```
 cargo run <comando>
 ```
+
+## Como testar
+
+```
+mkdir test
+cargo build --release
+alias rgit='<caminho_absoluto_do_projeto>/target/release/minirust'
+rgit <commando>
+```
