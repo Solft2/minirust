@@ -89,6 +89,7 @@ impl<'a> StagingArea<'a> {
 
         for (_key, entry) in self.entries {
             let mut entry_bytes = entry.as_bytes();
+            entry_bytes.push(b'\n');
             index_file_content.append(&mut entry_bytes);
         }
 

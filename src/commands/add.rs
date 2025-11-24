@@ -3,8 +3,8 @@ use crate::staging::StagingArea;
 use crate::Repository;
 
 /// Adiciona um arquivo na área de staging
-pub fn cmd_add() {
-    let file_path = PathBuf::from("teste.txt");
+pub fn cmd_add(file_path: &str) {
+    let file_path = PathBuf::from(file_path);
 
     let current = std::env::current_dir().expect("Não foi possível acessar o diretório");
     let mut repo = Repository::new(&current);

@@ -24,7 +24,9 @@ pub enum Commands {
     Branch,
     Commit,
     Merge,
-    Add,
+    Add {
+        file: String
+    },
     HashRust {
         #[arg(short, long)]
         write: bool,
@@ -44,7 +46,7 @@ pub fn cli_main() {
         Branch => branch::cmd_branch(),
         Commit => commit::cmd_commit(),
         Merge => merge::cmd_merge(),
-        Add => add::cmd_add(),
+        Add { file } => add::cmd_add(&file),
         Commands::HashRust { write, file } => hash_rust::cmd_hash_object(&file, write),
         CatFile { hash } => cat_file::cmd_cat_file(&hash),
         WriteTree => tree_rust::cmd_write_tree(),
