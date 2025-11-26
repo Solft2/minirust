@@ -24,7 +24,7 @@ pub fn serialize(inputs: &[Trees]) -> Vec<u8> {
     result
 }
 
-pub fn create_tree(repo: &Repository, inputs: &[Trees]) -> String {
+pub fn create_tree(repo: &mut Repository, inputs: &[Trees]) -> String {
     let body = serialize(inputs);
 
     let header = format!("tree {}\0", body.len());
@@ -37,7 +37,7 @@ pub fn create_tree(repo: &Repository, inputs: &[Trees]) -> String {
 }
 
 pub fn cmd_write_tree() {
-    let repo = Repository::new(&std::env::current_dir().unwrap());
+    let mut repo = Repository::new(&std::env::current_dir().unwrap());
 
     let mut inputs = Vec::new();
 
@@ -54,7 +54,7 @@ pub fn cmd_write_tree() {
             let byte = fs::read(&path).unwrap();
             let blob_bytes = make_blob(&byte);
             let hash = sha1sum(&blob_bytes);
-            write_object(&repo, &hash, &blob_bytes);
+            write_object(&mut repo, &hash, &blob_bytes);
 
             inputs.push(Trees {
                 mode: "100644".to_string(),
@@ -63,7 +63,7 @@ pub fn cmd_write_tree() {
             });
         }
     }
-
-    let hash = create_tree(&repo, &inputs);
+    
+    let hash = create_tree(&mut repo, &inputs);
     println!("{}", hash);
 }

@@ -8,7 +8,7 @@ use crate::Repository;
 
 pub fn cmd_hash_object(path: &str, write:bool){
     // cria uma instancia apontando para .git atual
-    let repo = Repository::new(&std::env::current_dir().unwrap());
+    let mut repo = Repository::new(&std::env::current_dir().unwrap());
     //Lê o conteudo do arquivo em bytes
     let byte = fs::read(path).expect("Não foi possível ler o arquivo!");
     //cria o blob no formato padrão
@@ -17,7 +17,7 @@ pub fn cmd_hash_object(path: &str, write:bool){
     let hash = sha1sum(&blob);
 
     if write{
-        write_object(&repo,&hash,&blob);
+        write_object(&mut repo,&hash,&blob);
     }
     println!("{}",hash);
 }
@@ -36,15 +36,17 @@ pub fn sha1sum(byte: &[u8]) -> String{
     hex::encode(result)
 }
 
-pub fn write_object(repo: &Repository, hash: &str, byte: &[u8]){
+pub fn write_object(repo: &mut Repository, hash: &str, byte: &[u8]){
     // divide o blob em 2, os dois primeiros caracteres e o resto
     let(dir, file) = hash.split_at(2);
-    // cria o diretorio como .git/objects/dir = os dois primeiros caracteres/file = restante do arquivo
-    let path = repo.repository_dir(&["objects",dir],true).unwrap().join(file);
-    // se já existe não salva novamente
-    if path.exists(){
+
+    let parts = &["objects", dir, file];
+    let path = repo.get_repository_path(parts);
+    if path.exists() {
         return;
     }
+    
+    repo.create_repository_file(parts);
     //compacta
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
     encoder.write_all(byte).unwrap();

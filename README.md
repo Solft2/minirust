@@ -1,4 +1,4 @@
-# Rust git
+# Minigit
 Sistema de controle de versão escrito em Rust, baseado no Git.
 
 ## Como rodar localmente
@@ -18,6 +18,7 @@ cargo run <comando>
 ```
 mkdir test
 cargo build --release
-alias rgit='<caminho_absoluto_do_projeto>/target/release/minirust'
-rgit <commando>
+alias minigit='<caminho_absoluto_do_projeto>/target/release/minigit'
+cd test
+minigit <commando>
 ```

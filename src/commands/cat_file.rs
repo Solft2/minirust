@@ -3,15 +3,16 @@ use std::io::Read;
 use flate2::read::ZlibDecoder;
 use crate::Repository;
 
+/// TODO: Atualizar
 pub fn cmd_cat_file(hash: &str){
     let repo = Repository::new(&std::env::current_dir().unwrap());
 
     let(dir,file) = hash.split_at(2);
-    let path = repo.repository_dir(&["objects",dir],false).expect("Diretório objects não encontrado")
-    .join(file);
+    let path = repo.get_repository_path(&["objects", dir, file]);
 
     if !path.exists(){
-        panic!("Não foi possível encontrar o objeto: {}", hash);
+        println!("Não foi possível encontrar o objeto: {}", hash);
+        return;
     }
 
     let compressed = fs::read(path).expect("Não foi possível ler o objeto");

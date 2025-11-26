@@ -6,9 +6,13 @@ use crate::Repository;
 pub fn cmd_add(file_path: &str) {
     let file_path = PathBuf::from(file_path);
 
-    let current = std::env::current_dir().expect("Não foi possível acessar o diretório");
+    let current = std::env::current_dir().expect("Deveria acessar o repositório atual");
     let mut repo = Repository::new(&current);
-    repo.get_rgitdir().expect("Não é um repositório RGit válido. Crie um com 'rgit init'.");
+
+    if !repo.minigitdir.exists() {
+        println!("Este diretório não é um repositório Minigit válido. Crie um com o comando 'minigit init'.");
+        return;
+    }
 
     let mut staging_area = StagingArea::new(&mut repo);
     staging_area.update_or_create_entry(&file_path);

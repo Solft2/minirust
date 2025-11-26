@@ -38,7 +38,7 @@ impl<'a> StagingArea<'a> {
 
     /// Carrega a área de staging do arquivo `index`
     pub fn new(repo: &'a mut Repository) -> Self {
-        let index_file_path = repo.gitdir.join(Self::INDEX_FILE);
+        let index_file_path = repo.minigitdir.join(Self::INDEX_FILE);
 
         let index_file = File::open(&index_file_path).unwrap();
         let reader = BufReader::new(index_file);
@@ -83,7 +83,7 @@ impl<'a> StagingArea<'a> {
     /// 
     /// Este método consome a instância da área de staging, precisando criar uma nova.
     pub fn save(self) {
-        let index_file_path = self.repo.gitdir.join(Self::INDEX_FILE);
+        let index_file_path = self.repo.minigitdir.join(Self::INDEX_FILE);
         let mut index_file = File::create(index_file_path).expect("Esperado criar o arquivo de índice");
         let mut index_file_content: Vec<u8> = Vec::new();
 

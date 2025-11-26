@@ -1,5 +1,5 @@
+use core::panic;
 use std::{fs::File, io::Write, path::{Path, PathBuf}};
-use flate2::write::ZlibEncoder;
 use crate::objects::RGitObject;
 
 /// Estrutura que representa o repositório do projeto
@@ -9,81 +9,64 @@ use crate::objects::RGitObject;
 /// - `gitdir` - Caminho para a pasta .rgit do repositório
 pub struct Repository{
     pub worktree: PathBuf,
-    pub gitdir: PathBuf,
+    pub minigitdir: PathBuf,
 }
 
 impl Repository {
-    const RGITDIR : &'static str = ".rgit";
+    const MINIGITDIR : &'static str = ".minigit";
 
     pub fn new(path: &Path) -> Self {
         Repository {
             worktree: path.to_path_buf(),
-            gitdir: path.join(Self::RGITDIR),
+            minigitdir: path.join(Self::MINIGITDIR),
         }
     }
 
-    /// Constroí um caminho de arquivo a partir da pasta .rgit do repositório
+    /// Constroí um caminho de arquivo a partir da pasta .minigit do repositório
     /// 
     /// ## Argumentos
-    /// - `partes` - As partes que formam o caminho
+    /// - `parts` - As partes que formam o caminho
     /// 
     /// ## Exemplo
     /// ```
-    /// repository_path(&["a", "b", "c"]) // .rgit/a/b/c
+    /// get_repository_path(&["a", "b", "c"]) // .minigit/a/b/c
     /// ```
-    pub fn repository_path(&self, partes: &[&str]) -> PathBuf {
-        let mut path = self.gitdir.clone();
-        for p in partes {
+    pub fn get_repository_path(&self, parts: &[&str]) -> PathBuf {
+        let mut path = self.minigitdir.clone();
+        for p in parts {
             path.push(p);
         }
         path
     }
 
-    /// Retorna o caminho para a pasta .rgit se ela estiver bem configurada.
-    /// Caso contrário, retorna `None`.
-    pub fn get_rgitdir(&self) -> Option<PathBuf> {
-        if self.gitdir.exists() && self.gitdir.is_dir() {
-            Some(self.gitdir.clone())
-        } else {
-            None
-        }
-    }
-
-    /// Retorna um caminho para um diretório a partir da pasta .rgit
+    /// Cria uma pasta no caminho especificado relativo ao .minigit
     /// 
     /// ## Argumentos
-    /// - `partes` - Partes do caminho do diretório
-    /// - `mkdir` - Flag para criar os diretórios intermediários que não existem
-    pub fn repository_dir(&self, partes: &[&str], mkdir: bool) -> Option<PathBuf> {
-        let path = self.repository_path(partes);
-        if path.exists() {
-            if path.is_dir() {
-                return Some(path);
-            }
-            panic!("Não é diretorio: {:?}", path);
-        }
-        if mkdir {
-            std::fs::create_dir_all(&path).unwrap();
-            return Some(path);
-        }
-        None
+    /// - `parts` - Partes do caminho até a pasta
+    pub fn create_repository_dir(&mut self, parts: &[&str]) {
+        let path = self.get_repository_path(parts);
+        std::fs::create_dir_all(&path).expect("Deveria criar o diretório");
     }
 
-    /// Retorna um caminho para um arquivo a partir da pasta .rgit
+    /// Cria um arquivo no caminho especificado relativo ao .minigit
     /// 
     /// ## Argumentos
-    /// - `partes` - Partes do caminho do arquivo
-    /// - `mkdir` - Flag para criar os diretórios intermediários que não existem
-    pub fn repository_file(&self, parts: &[&str], mkdir: bool) -> PathBuf {
-        if let Some(_) = self.repository_dir(&parts[..parts.len() - 1], mkdir) {
-            self.repository_path(parts)
-        } else {
-            panic!("Não foi possível criar o diretório do arquivo!");
+    /// - `parts` - Partes do caminho até o arquivo 
+    pub fn create_repository_file(&mut self, parts: &[&str]) -> File {
+        if parts.is_empty() {
+            panic!("Foi tentado criar um arquivo sem nome")
         }
-    }
 
-    /// Cria um objeto .rgit no repositório.
-    /// Por questões de performance e organização, o objeto ficará em `.rgit/objects/<a>/<b>`, 
+        self.create_repository_dir(&parts[0..parts.len()-1]);
+
+        let path = self.get_repository_path(parts);
+
+        File::create(path).expect("Deveria criar o arquivo")
+    }
+    
+
+    /// Cria um objeto .minigit no repositório.
+    /// Por questões de performance e organização, o objeto ficará em `.minigit/objects/<a>/<b>`, 
     /// onde `a` são os dois primeiros dígitos do hash e `b` é o restante do hash.
     /// 
     /// ## Argumentos
@@ -92,15 +75,13 @@ impl Repository {
         let hash = object.hash();
         let (dir, file_name) = hash.split_at(2);
 
-        let path = self.repository_file(&["objects", dir, file_name], false);
+        let path = self.get_repository_path(&["objects", dir, file_name]);
 
         if path.exists() {
             return;
         }
 
-        let path = self.repository_file(&["objects", dir, file_name], true);
-
-        let mut file = File::create(path).expect("Deveria criar o objeto");
+        let mut file = self.create_repository_file(&["objects", dir, file_name]);
         file.write_all(&object.serialize()).expect("Deveria escrever o conteúdo do objeto");
     }
 }

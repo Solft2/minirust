@@ -1,48 +1,40 @@
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
 use crate::Repository;
 
-
-
 pub fn cmd_init() {
-    //Diretorio atual
-    let current = std::env::current_dir().expect("Não foi possível acessar o diretório");
-    //diretorio atual/.git
-    let repo = Repository::new(&current);
+    let current = std::env::current_dir().expect("Deveria acessar o diretório atual");
+    let mut repo = Repository::new(&current);
 
-    create_repo(&repo);
-    println!("Repositório Git inicializado em {:?}", repo.worktree);
+    create_repo(&mut repo);
+    println!("Repositório Minigit inicializado em {:?}", repo.worktree);
 }
 
-fn create_repo(repo: &Repository) {
-
-    //verefica se já não existe um .git
-    if repo.gitdir.exists() && repo.gitdir.read_dir().unwrap().next().is_some() {
-        panic!("Já existe um repositório Git aqui!");
+fn create_repo(repo: &mut Repository) {
+    if repo.minigitdir.exists() {
+        println!("Já existe um repositório Minigit aqui!");
+        return;
     }
-    //cria tudo isso dentro da .git
-    repo.repository_dir(&[], true); // propria .git
-    repo.repository_dir(&["objects"], true);
-    repo.repository_dir(&["refs"], true);
-    repo.repository_dir(&["refs", "heads"], true);
-    repo.repository_dir(&["refs", "tags"], true);
-    repo.repository_file(&["index"], true);
 
-    write_file(repo.repository_file(&["description"], true),
-        "Repositório sem nome. Edite este arquivo para nomear.\n");
+    repo.create_repository_dir(&[]);
+    repo.create_repository_dir(&["objects"]);
+    repo.create_repository_dir(&["refs"]);
+    repo.create_repository_dir(&["refs", "heads"]);
+    repo.create_repository_dir(&["refs", "tags"]);
+    repo.create_repository_file(&["index"]);
 
-    write_file(repo.repository_file(&["HEAD"], true),
-        "ref: refs/heads/master\n");
+    let mut description_file = repo.create_repository_file(&["description"]);
+    let mut head_file = repo.create_repository_file(&["HEAD"]);
+    let mut config_file = repo.create_repository_file(&["config"]);
 
-    write_file(repo.repository_file(&["config"], true),
-        "[core]\n\
+    write_file(&mut description_file, "Repositório sem nome. Edite este arquivo para nomear.\n");
+    write_file(&mut head_file, "ref: refs/heads/master\n");
+    write_file(&mut config_file,         "[core]\n\
          repositoryformatversion = 0\n\
          filemode = false\n\
          bare = false\n");
 }
 
-fn write_file(path: PathBuf, content: &str) {
-    let mut file = File::create(path).expect("Erro criando arquivo!");
+fn write_file(file: &mut File, content: &str) {
     file.write_all(content.as_bytes()).expect("Erro escrevendo arquivo!");
 }

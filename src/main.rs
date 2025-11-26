@@ -1,3 +1,3 @@
 fn main() {
-    minirust::cli_main();
+    minigit::cli_main();
 }
