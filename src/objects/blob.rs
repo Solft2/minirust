@@ -23,4 +23,8 @@ impl RGitObject for BlobObject {
     fn deserialize(&mut self, object_bytes: Vec<u8>) {
         self.content = object_bytes;
     }
+
+    fn object_type() -> &'static str {
+        "blob"
+    }
 }

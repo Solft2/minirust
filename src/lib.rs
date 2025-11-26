@@ -82,7 +82,7 @@ impl Repository {
         }
 
         let mut file = self.create_repository_file(&["objects", dir, file_name]);
-        file.write_all(&object.serialize()).expect("Deveria escrever o conteúdo do objeto");
+        file.write_all(&object.get_object_bytes()).expect("Deveria escrever o conteúdo do objeto");
     }
 }
 
