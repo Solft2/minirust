@@ -1,21 +1,26 @@
 use std::fs::File;
 use std::io::Write;
 use crate::Repository;
+use crate::utils::find_repo;
 
 pub fn cmd_init() {
     let current = std::env::current_dir().expect("Deveria acessar o diretório atual");
-    let mut repo = Repository::new(&current);
+    let repo = find_repo(&current);
 
+    match repo {
+        Some(_repository) => {
+            println!("Este diretório já faz parte de um repostitório. Ainda não suportamos repositórios dentro de outros repositórios");
+            return;
+        }
+        None => {}
+    }
+
+    let mut repo = Repository::new(&current);
     create_repo(&mut repo);
     println!("Repositório Minigit inicializado em {:?}", repo.worktree);
 }
 
 fn create_repo(repo: &mut Repository) {
-    if repo.minigitdir.exists() {
-        println!("Já existe um repositório Minigit aqui!");
-        return;
-    }
-
     repo.create_repository_dir(&[]);
     repo.create_repository_dir(&["objects"]);
     repo.create_repository_dir(&["refs"]);
