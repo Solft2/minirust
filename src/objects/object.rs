@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 pub trait RGitObject {
     /// Hash do objeto
     fn hash(&self) -> String;

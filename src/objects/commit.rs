@@ -1,7 +1,7 @@
-use crate::objects::RGitObject;
+use crate::{objects::RGitObject, utils::{MultipleValuesMap, key_value_parse, key_value_serialize}};
 
 pub struct CommitObject {
-    content: Vec<u8>
+    content: MultipleValuesMap
 }
 
 impl RGitObject for CommitObject {
@@ -10,11 +10,14 @@ impl RGitObject for CommitObject {
     }
 
     fn serialize(&self) -> Vec<u8> {
-        panic!("Não implementado");
+        let result = key_value_serialize(&self.content);
+        result.as_bytes().to_vec()
     }
 
     #[allow(unused_variables)]
     fn deserialize(&mut self, object_bytes: Vec<u8>) {
-        panic!("Não implementado");
+        let helper = String::from_utf8(object_bytes).expect("O objeto deve ser uma string UTF-8 válida");
+        let map = key_value_parse(&helper);
+        self.content = map;
     }
 }
