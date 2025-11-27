@@ -1,5 +1,4 @@
 use crate::objects::RGitObject;
-use crate::utils::sha1sum;
 
 pub struct BlobObject {
     content: Vec<u8>
@@ -12,10 +11,6 @@ impl BlobObject {
 }
 
 impl RGitObject for BlobObject {
-    fn hash(&self) -> String {
-        sha1sum(&self.content)
-    }
-
     fn serialize(&self) -> Vec<u8> {
         self.content.clone()
     }

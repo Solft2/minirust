@@ -1,6 +1,10 @@
+use crate::commands::hash_rust::sha1sum;
+
 pub trait RGitObject {
     /// Hash do objeto
-    fn hash(&self) -> String;
+    fn hash(&self) -> String {
+        sha1sum(&self.get_object_bytes())
+    }
 
     /// Gere o conteúdo do arquivo do objeto
     fn serialize(&self) -> Vec<u8>;

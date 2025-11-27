@@ -1,20 +1,56 @@
+use core::panic;
+
 use crate::objects::RGitObject;
 
 pub struct TreeObject {
-    content: Vec<u8>
+    children: Vec<TreeObjectChild>
+}
+
+struct TreeObjectChild {
+    mode: String,
+    object_id: String,
+    path: String
 }
 
 impl RGitObject for TreeObject {
-    fn hash(&self) -> String {
-        panic!("Não implementado")
-    }
-
     fn serialize(&self) -> Vec<u8> {
-        panic!("Não implementado");
+        let mut result = String::new();
+
+        for child in &self.children {
+            let helper = format!("{} {}\0{}\n", &child.mode, &child.path, &child.object_id);
+            result.push_str(&helper);
+        }
+
+        result.as_bytes().to_vec()
     }
 
-    #[allow(unused_variables)]
     fn deserialize(&mut self, object_bytes: Vec<u8>) {
-        panic!("Não implementado");
+        let mut object_str = str::from_utf8(&object_bytes).expect("O objeto deve ser uma string UTF-8 válida");
+
+        while let Some(new_line) = object_str.find('\n') {
+            let record = &object_str[..new_line];
+            self.children.push(Self::parse_child(record));
+            object_str = &object_str[new_line+1..];
+        }
+    }
+}
+
+impl TreeObject {
+    fn parse_child(record: &str) -> TreeObjectChild {
+        let space = record.find(' ');
+        let null = record.find('\0');
+
+        if space.is_none() || null.is_none() {
+            panic!("Objeto árvore mal formatado");
+        }
+
+        let space = space.unwrap();
+        let null = null.unwrap();
+
+        TreeObjectChild { 
+            mode: record[..space].to_string(), 
+            object_id: record[space+1..null].to_string(), 
+            path: record[null+1..].to_string()
+        }
     }
 }
