@@ -3,13 +3,13 @@ use core::panic;
 use crate::objects::RGitObject;
 
 pub struct TreeObject {
-    children: Vec<TreeObjectChild>
+    pub children: Vec<TreeObjectChild>
 }
 
-struct TreeObjectChild {
-    mode: String,
-    object_id: String,
-    path: String
+pub struct TreeObjectChild {
+    pub mode: String,
+    pub object_id: String,
+    pub path: String
 }
 
 impl RGitObject for TreeObject {

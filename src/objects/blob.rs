@@ -1,7 +1,7 @@
 use crate::objects::RGitObject;
 
 pub struct BlobObject {
-    content: Vec<u8>
+    pub content: Vec<u8>
 }
 
 impl BlobObject {

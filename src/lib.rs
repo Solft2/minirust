@@ -1,6 +1,6 @@
 use core::panic;
 use std::{fs::File, io::{BufReader, Read, Write}, path::{Path, PathBuf}};
-use crate::objects::{BlobObject, CommitObject, RGitObject, TagObject, TreeObject};
+use crate::objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TagObject, TreeObject};
 
 /// Estrutura que representa o repositório do projeto
 /// 
@@ -85,7 +85,7 @@ impl Repository {
         file.write_all(&object.get_object_bytes()).expect("Deveria escrever o conteúdo do objeto");
     }
 
-    pub fn get_object(&self, object_id: &String) -> Option<Box<dyn RGitObject>> {
+    pub fn get_object(&self, object_id: &String) -> Option<RGitObjectTypes> {
         let (dir, file_name) = object_id.split_at(2);
         let file_path = self.get_repository_path(&["objects", dir, file_name]);
         
@@ -106,19 +106,19 @@ impl Repository {
         match object_type {
             b"commit" => {
                 let commit = CommitObject::new(object_content.to_vec());
-                Some(Box::new(commit))
+                Some(RGitObjectTypes::Commit(commit))
             },
             b"blob" => {
                 let blob = BlobObject::new(object_content.to_vec());
-                Some(Box::new(blob))
+                Some(RGitObjectTypes::Blob(blob))
             },
             b"tag" => {
                 let tag = TagObject::new(object_content.to_vec());
-                Some(Box::new(tag))
+                Some(RGitObjectTypes::Tag(tag))
             },
             b"tree" => {
                 let tree = TreeObject::new(object_content.to_vec());
-                Some(Box::new(tree))
+                Some(RGitObjectTypes::Tree(tree))
             },
             _ => {
                 panic!("Tipo de objeto desconhecido!");

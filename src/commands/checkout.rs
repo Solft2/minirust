@@ -1,17 +1,86 @@
-use crate::{Repository, utils::find_repo};
+use std::{path::PathBuf};
+
+use crate::{Repository, objects::{RGitObjectTypes, TreeObject}, utils::{create_dir, create_file, find_repo}};
 
 
 pub fn cmd_checkout(commit_id: &String) {
-    let current_dir = std::env::current_dir().expect("Deveria acessar o diretório atual");
-    let repository = find_repo(&current_dir);
-
-    match repository {
-        None => {
-            println!("Repositório minigit não encontrado");
-            return;
+    match execute_checkout(commit_id) {
+        Ok(..) => {
+            println!("Indo para o commit {}", commit_id)
+        },
+        Err(err) => {
+            println!("Erro: {}.", err);
         }
-        Some(repository) =>  {
-            let obj = repository.get_object(commit_id);
+    }
+}
+
+fn execute_checkout(commit_id: &String) -> Result<(), String> {
+    let current_dir = std::env::current_dir()
+        .expect("Deveria conseguir ler o diretório atual");
+
+    let repository = find_repo(&current_dir)
+        .ok_or("Não é um repositório minigit")?;
+
+    let object = repository
+        .get_object(commit_id)
+        .ok_or("Não existe um objeto com este ID")?;
+
+    match object {
+        RGitObjectTypes::Commit(commit) => {
+            // Assumimos apenas uma tree
+            let trees = commit.content
+                .get("tree")
+                .expect("Commit deveria possuir uma tree (estado corrompido)");
+
+            let tree = trees.first().expect("Commit deveria possuir uma tree (estado corrompido)");
+
+            let tree_object = repository.get_object(tree).expect("Objeto da tree não foi encontrado (estado corrompido)");
+
+            match tree_object {
+                RGitObjectTypes::Tree(tree_object) => {
+                    instanciate_tree(&repository, &tree_object);
+                }
+                _ => {
+                    panic!("Tree do commit não é uma arvore.");
+                }
+            }
+        }
+        RGitObjectTypes::Tree(tree_object) => {
+            instanciate_tree(&repository, &tree_object);
+        }
+        _ => {
+            return Err(String::from("Objeto não é um commit ou uma tree"));
+        }
+    }
+
+
+
+    Ok(())
+}
+
+fn instanciate_tree(repository: &Repository, tree: &TreeObject) {
+    instanciate_subtree(repository, tree, &repository.worktree);
+}
+
+fn instanciate_subtree(repository: &Repository, tree: &TreeObject, current_dir: &PathBuf) {
+    for child in &tree.children {
+        let object = repository
+            .get_object(&child.object_id)
+            .expect("Objeto da tree deveria existir");
+        
+        let path = current_dir.join(child.path.clone());
+
+        match object {
+            RGitObjectTypes::Blob(blob) => {
+                create_file(&path, &blob.content);
+            },
+            RGitObjectTypes::Tree(tree) => {
+                create_dir(&path);
+                instanciate_subtree(repository, &tree, &path);
+            }
+            _ => {
+                panic!("Objeto não é blob ou tree.");
+            }
         }
     }
 }

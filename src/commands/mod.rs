@@ -7,6 +7,7 @@ pub mod commit;
 pub mod log;
 pub mod merge;
 pub mod add;
+pub mod checkout;
 use clap::{Parser, Subcommand};
 
 
@@ -26,6 +27,9 @@ pub enum Commands {
     Merge,
     Add {
         file: String
+    },
+    Checkout {
+        commit_id: String
     },
     HashRust {
         #[arg(short, long)]
@@ -47,6 +51,7 @@ pub fn cli_main() {
         Commit => commit::cmd_commit(),
         Merge => merge::cmd_merge(),
         Add { file } => add::cmd_add(&file),
+        Checkout { commit_id } => checkout::cmd_checkout(&commit_id),
         Commands::HashRust { write, file } => hash_rust::cmd_hash_object(&file, write),
         CatFile { hash } => cat_file::cmd_cat_file(&hash),
         WriteTree => tree_rust::cmd_write_tree(),

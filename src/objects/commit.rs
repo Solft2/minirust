@@ -1,7 +1,7 @@
 use crate::{objects::RGitObject, utils::{MultipleValuesMap, key_value_parse, key_value_serialize}};
 
 pub struct CommitObject {
-    content: MultipleValuesMap
+    pub content: MultipleValuesMap
 }
 
 impl CommitObject {
