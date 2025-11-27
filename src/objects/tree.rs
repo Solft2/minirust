@@ -6,6 +6,7 @@ pub struct TreeObject {
     pub children: Vec<TreeObjectChild>
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct TreeObjectChild {
     pub mode: String,
     pub object_id: String,
@@ -43,6 +44,8 @@ impl TreeObject {
             result.push(Self::parse_child(record));
             object_str = &object_str[new_line+1..];
         }
+
+        result.sort();
 
         result
     }
