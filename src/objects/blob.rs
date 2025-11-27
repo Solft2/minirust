@@ -19,7 +19,7 @@ impl RGitObject for BlobObject {
         self.content = object_bytes;
     }
 
-    fn object_type() -> &'static str {
+    fn object_type(&self) -> &'static str {
         "blob"
     }
 }

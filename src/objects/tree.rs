@@ -25,17 +25,28 @@ impl RGitObject for TreeObject {
     }
 
     fn deserialize(&mut self, object_bytes: Vec<u8>) {
-        let mut object_str = str::from_utf8(&object_bytes).expect("O objeto deve ser uma string UTF-8 válida");
-
-        while let Some(new_line) = object_str.find('\n') {
-            let record = &object_str[..new_line];
-            self.children.push(Self::parse_child(record));
-            object_str = &object_str[new_line+1..];
-        }
+        self.children = Self::children_from_bytes(object_bytes);
     }
 }
 
 impl TreeObject {
+    pub fn new(object_bytes: Vec<u8>) -> Self {
+        TreeObject { children: Self::children_from_bytes(object_bytes) }
+    }
+
+    fn children_from_bytes(object_bytes: Vec<u8>) -> Vec<TreeObjectChild> {
+        let mut result: Vec<TreeObjectChild> = Vec::new();
+        let mut object_str = str::from_utf8(&object_bytes).expect("O objeto deve ser uma string UTF-8 válida");
+
+        while let Some(new_line) = object_str.find('\n') {
+            let record = &object_str[..new_line];
+            result.push(Self::parse_child(record));
+            object_str = &object_str[new_line+1..];
+        }
+
+        result
+    }
+
     fn parse_child(record: &str) -> TreeObjectChild {
         let space = record.find(' ');
         let null = record.find('\0');

@@ -1,6 +1,6 @@
 use core::panic;
-use std::{fs::File, io::Write, path::{Path, PathBuf}};
-use crate::objects::RGitObject;
+use std::{fs::File, io::{BufReader, Read, Write}, path::{Path, PathBuf}};
+use crate::objects::{BlobObject, CommitObject, RGitObject, TagObject, TreeObject};
 
 /// Estrutura que representa o repositório do projeto
 /// 
@@ -83,6 +83,47 @@ impl Repository {
 
         let mut file = self.create_repository_file(&["objects", dir, file_name]);
         file.write_all(&object.get_object_bytes()).expect("Deveria escrever o conteúdo do objeto");
+    }
+
+    pub fn get_object(&self, object_id: &String) -> Option<Box<dyn RGitObject>> {
+        let (dir, file_name) = object_id.split_at(2);
+        let file_path = self.get_repository_path(&["objects", dir, file_name]);
+        
+        if !file_path.exists() {
+            return None;
+        }
+
+        let file = File::open(file_path).unwrap();
+        let mut content: Vec<u8> = Vec::new();
+        let mut reader = BufReader::new(file);
+
+        reader.read_to_end(&mut content).unwrap();
+        let space = content.iter().position(|x| *x == b' ').unwrap();
+
+        let (object_type, object_content) = content.split_at(space);
+        let object_content = &object_content[1..];
+
+        match object_type {
+            b"commit" => {
+                let commit = CommitObject::new(object_content.to_vec());
+                Some(Box::new(commit))
+            },
+            b"blob" => {
+                let blob = BlobObject::new(object_content.to_vec());
+                Some(Box::new(blob))
+            },
+            b"tag" => {
+                let tag = TagObject::new(object_content.to_vec());
+                Some(Box::new(tag))
+            },
+            b"tree" => {
+                let tree = TreeObject::new(object_content.to_vec());
+                Some(Box::new(tree))
+            },
+            _ => {
+                panic!("Tipo de objeto desconhecido!");
+            }
+        }
     }
 }
 

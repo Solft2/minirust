@@ -4,6 +4,12 @@ pub struct TagObject {
     content: Vec<u8>
 }
 
+impl TagObject {
+    pub fn new(object_bytes: Vec<u8>) -> Self {
+        panic!("Não implementado")
+    }
+}
+
 impl RGitObject for TagObject {
     fn hash(&self) -> String {
         panic!("Não implementado")
