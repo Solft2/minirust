@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Repository, objects::{CommitObject, RGitObject, TreeObject, TreeObjectChild}, staging::{StagingArea, StagingTree}, utils::find_repo};
+use crate::{Repository, objects::{CommitObject, RGitObject, TreeObject, TreeObjectChild}, staging::{StagingArea, StagingTree}, utils::{find_repo}};
 
 pub fn cmd_commit(message: String) {
     match cmd_commit_result(message) {
@@ -22,18 +22,23 @@ fn cmd_commit_result(message: String) -> Result<String, String> {
     let staging_tree = instantiate_tree_from_index(&mut repo);
 
     let tree_id = create_tree_object(&staging_tree, &mut repo);
-
     let author = "Ian";
-    let parent = "teste";
+    let head = repo.resolve_head();
+    let parent: Vec<String> = if head.is_empty() {
+        Vec::new()
+    } else {
+        vec![head.clone()]
+    };
 
     let commit = CommitObject {
         tree: tree_id,
         author: author.to_string(),
         message: message,
-        parent: vec![parent.to_string()],
+        parent: parent,
     };
 
     repo.create_object(&commit);
+    repo.update_head(&commit.hash());
 
     Ok(commit.hash())
 }

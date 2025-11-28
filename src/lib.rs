@@ -1,6 +1,6 @@
 use core::panic;
 use std::{fs::File, io::{BufReader, Read, Write}, path::{Path, PathBuf}};
-use crate::objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject};
+use crate::{objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, utils::{read_string_from_file, resolve_ref, write_string_to_file}};
 
 /// Estrutura que representa o repositório do projeto
 /// 
@@ -10,6 +10,7 @@ use crate::objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, Tree
 pub struct Repository{
     pub worktree: PathBuf,
     pub minigitdir: PathBuf,
+    pub head_path: PathBuf,
 }
 
 impl Repository {
@@ -19,7 +20,32 @@ impl Repository {
         Repository {
             worktree: path.to_path_buf(),
             minigitdir: path.join(Self::MINIGITDIR),
+            head_path: path.join(Self::MINIGITDIR).join("HEAD"),
         }
+    }
+
+    /// Retorna o hash do commit apontado pelo HEAD do repositório
+    pub fn resolve_head(&self) -> String {
+        let ref_string = read_string_from_file(&self.head_path);
+        resolve_ref(&ref_string, self)
+    }
+
+    /// Retorna o nome da referência apontada pelo HEAD do repositório
+    pub fn get_head(&self) -> String {
+        let head_string = read_string_from_file(&self.head_path); 
+
+        if head_string.starts_with("ref: ") {
+            head_string[5..].trim().to_string()
+        } else {
+            head_string.trim().to_string()
+        }
+    }
+
+    pub fn update_head(&mut self, commit_id: &String) {
+        let head_ref = self.get_head();
+        let head_path = self.minigitdir.join(head_ref);
+
+        write_string_to_file(&head_path, commit_id);
     }
 
     /// Constroí um caminho de arquivo a partir da pasta .minigit do repositório
