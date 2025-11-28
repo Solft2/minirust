@@ -28,6 +28,10 @@ impl RGitObject for TreeObject {
     fn deserialize(&mut self, object_bytes: Vec<u8>) {
         self.children = Self::children_from_bytes(object_bytes);
     }
+
+    fn object_type(&self) -> &'static str {
+        "tree"
+    }
 }
 
 impl TreeObject {

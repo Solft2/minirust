@@ -28,13 +28,9 @@ fn execute_checkout(commit_id: &String) -> Result<(), String> {
     match object {
         RGitObjectTypes::Commit(commit) => {
             // Assumimos apenas uma tree
-            let trees = commit.content
-                .get("tree")
-                .expect("Commit deveria possuir uma tree (estado corrompido)");
+            let tree = commit.tree;
 
-            let tree = trees.first().expect("Commit deveria possuir uma tree (estado corrompido)");
-
-            let tree_object = repository.get_object(tree).expect("Objeto da tree não foi encontrado (estado corrompido)");
+            let tree_object = repository.get_object(&tree).expect("Objeto da tree não foi encontrado (estado corrompido)");
 
             match tree_object {
                 RGitObjectTypes::Tree(tree_object) => {

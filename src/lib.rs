@@ -1,6 +1,6 @@
 use core::panic;
 use std::{fs::File, io::{BufReader, Read, Write}, path::{Path, PathBuf}};
-use crate::objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TagObject, TreeObject};
+use crate::objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject};
 
 /// Estrutura que representa o repositório do projeto
 /// 
@@ -111,10 +111,6 @@ impl Repository {
             b"blob" => {
                 let blob = BlobObject::new(object_content.to_vec());
                 Some(RGitObjectTypes::Blob(blob))
-            },
-            b"tag" => {
-                let tag = TagObject::new(object_content.to_vec());
-                Some(RGitObjectTypes::Tag(tag))
             },
             b"tree" => {
                 let tree = TreeObject::new(object_content.to_vec());

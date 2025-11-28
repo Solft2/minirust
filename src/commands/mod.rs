@@ -23,13 +23,15 @@ pub enum Commands {
     Init,
     Log,
     Branch,
-    Commit,
     Merge,
     Add {
         file: String
     },
     Checkout {
         commit_id: String
+    },
+    Commit {
+        message: String
     },
     HashRust {
         #[arg(short, long)]
@@ -48,10 +50,10 @@ pub fn cli_main() {
         Init => init::cmd_init(),
         Log => log::cmd_log(),
         Branch => branch::cmd_branch(),
-        Commit => commit::cmd_commit(),
         Merge => merge::cmd_merge(),
         Add { file } => add::cmd_add(&file),
         Checkout { commit_id } => checkout::cmd_checkout(&commit_id),
+        Commit { message } => commit::cmd_commit(message),
         Commands::HashRust { write, file } => hash_rust::cmd_hash_object(&file, write),
         CatFile { hash } => cat_file::cmd_cat_file(&hash),
         WriteTree => tree_rust::cmd_write_tree(),
