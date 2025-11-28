@@ -1,4 +1,4 @@
-use crate::{objects::RGitObject};
+use crate::{objects::RGitObject, utils::files};
 
 pub struct CommitObject {
     pub tree: String,
@@ -12,43 +12,21 @@ impl CommitObject {
     pub fn new(content_bytes: Vec<u8>) -> Self {
         let content_str = String::from_utf8(content_bytes).expect("Commit deve ser um arquivo UTF8 válido");
         
-        let (tree, remainder) = Self::read_value(&content_str);
-        let (author, remainder) = Self::read_value(remainder);
-        let (message, remainder) = Self::read_value(remainder);
-        let (timestamp_str, mut remainder) = Self::read_value(remainder);
+        let (_, tree, remainder) = files::read_value(&content_str);
+        let (_, author, remainder) = files::read_value(remainder);
+        let (_, message, remainder) = files::read_value(remainder);
+        let (_, timestamp_str, mut remainder) = files::read_value(remainder);
 
         let timestamp: u64 = timestamp_str.parse().expect("Timestamp deve ser um número válido");
         let mut parent: Vec<String> = Vec::new();
 
         while !remainder.is_empty() {
-            let (parent_commit, new_remainder) = Self::read_value(remainder);
+            let (_, parent_commit, new_remainder) = files::read_value(remainder);
             parent.push(parent_commit);
             remainder = new_remainder;
         }
 
         Self { tree, author, message, timestamp, parent }
-    }
-
-    /// Lê um valor do conteúdo do commit, retornando o valor lido e o restante do conteúdo
-    /// 
-    /// Ignora-se a primeira palavra (a chave), retornando apenas o valor
-    /// O valor pode conter múltiplas linhas, desde que cada linha subsequente comece com um espaço
-    fn read_value(content: &str) -> (String, &str) {
-        let parts: Vec<&str> = content.splitn(2, ' ').collect();
-        let mut remainder = parts[1];
-
-        let new_line = remainder.find('\n').unwrap_or(remainder.len());
-        let mut value = remainder[..new_line].to_string();
-        remainder = &remainder[new_line+1..];
-
-        while remainder.starts_with(' ') {
-            let new_line = remainder.find('\n').unwrap_or(remainder.len());
-            value.push('\n');
-            value.push_str(&remainder[..new_line]);
-            remainder = &remainder[new_line+1..];
-        }
-
-        (value, remainder)
     }
 }
 

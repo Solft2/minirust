@@ -28,17 +28,13 @@ fn create_repo(repo: &mut Repository) {
     repo.create_repository_dir(&["refs", "heads"]);
     repo.create_repository_file(&["index"]);
     repo.create_repository_file(&["refs", "heads", "master"]);
+    repo.create_repository_file(&["config"]);
 
     let mut description_file = repo.create_repository_file(&["description"]);
     let mut head_file = repo.create_repository_file(&["HEAD"]);
-    let mut config_file = repo.create_repository_file(&["config"]);
 
     write_file(&mut description_file, "Repositório sem nome. Edite este arquivo para nomear.\n");
     write_file(&mut head_file, "ref: refs/heads/master");
-    write_file(&mut config_file,         "[core]\n\
-         repositoryformatversion = 0\n\
-         filemode = false\n\
-         bare = false\n");
 }
 
 fn write_file(file: &mut File, content: &str) {

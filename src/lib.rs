@@ -1,6 +1,6 @@
 use core::panic;
 use std::{fs::File, io::{BufReader, Read, Write}, path::{Path, PathBuf}};
-use crate::{objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, utils::{read_string_from_file, resolve_ref, write_string_to_file}};
+use crate::{config::GitConfig, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, utils::{read_bytes_from_file, read_string_from_file, resolve_ref, write_bytes_to_file, write_string_to_file}};
 
 /// Estrutura que representa o repositório do projeto
 /// 
@@ -11,17 +11,34 @@ pub struct Repository{
     pub worktree: PathBuf,
     pub minigitdir: PathBuf,
     pub head_path: PathBuf,
+    pub config: GitConfig
 }
 
 impl Repository {
     const MINIGITDIR : &'static str = ".minigit";
+    const CONFIG : &'static str = "config";
+    const HEAD : &'static str = "HEAD";
 
     pub fn new(path: &Path) -> Self {
+        let minigit_path = path.join(Self::MINIGITDIR);
+        let config_path = minigit_path.join(Self::CONFIG);
+        let head_path = minigit_path.join(Self::HEAD);
+
+        let config_bytes = read_bytes_from_file(&config_path);
+
         Repository {
             worktree: path.to_path_buf(),
-            minigitdir: path.join(Self::MINIGITDIR),
-            head_path: path.join(Self::MINIGITDIR).join("HEAD"),
+            minigitdir: minigit_path,
+            head_path: head_path,
+            config: GitConfig::new(config_bytes)
         }
+    }
+
+    /// Atualiza o arquivo de configuração do repositório
+    pub fn update_config(&mut self, key: String, value: String) {
+        self.config.set(key, value);
+        let config_path = self.minigitdir.join(Self::CONFIG);
+        write_bytes_to_file(&config_path, &self.config.serialize());
     }
 
     /// Retorna o hash do commit apontado pelo HEAD do repositório
@@ -191,5 +208,6 @@ pub mod commands;
 pub mod staging;
 pub mod objects;
 pub mod utils;
+pub mod config;
 
 pub use commands::cli_main;

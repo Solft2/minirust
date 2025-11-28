@@ -22,7 +22,11 @@ fn cmd_commit_result(message: String) -> Result<String, String> {
     let staging_tree = instantiate_tree_from_index(&mut repo);
 
     let tree_id = create_tree_object(&staging_tree, &mut repo);
-    let author = "Ian";
+
+    let author_name = repo.config.get_username();
+    let author_email = repo.config.get_email();
+    let author = format!("{} <{}>", author_name, author_email);
+    
     let head = repo.resolve_head();
     let parent: Vec<String> = if head.is_empty() {
         Vec::new()
