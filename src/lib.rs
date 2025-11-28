@@ -89,6 +89,35 @@ impl Repository {
 
         File::create(path).expect("Deveria criar o arquivo")
     }
+
+    /// Retorna o histórico de commits do repositório, começando do HEAD
+    pub fn get_commit_history(&self) -> Vec<CommitObject> {
+        let mut stack_of_ids: Vec<String> = Vec::new();
+        let mut commit_history: Vec<CommitObject> = Vec::new();
+        let head = self.resolve_head();
+        if head.is_empty() {
+            return commit_history;
+        }
+
+        stack_of_ids.push(head);
+
+        while !stack_of_ids.is_empty() {
+            let current_commit_id = stack_of_ids.pop().unwrap();
+            let object = self.get_object(&current_commit_id);
+            if let Some(RGitObjectTypes::Commit(commit)) = object {
+                for parent in &commit.parent {
+                    stack_of_ids.push(parent.clone());
+                }
+                commit_history.push(commit);
+            } else {
+                break;
+            }
+        }
+
+        commit_history.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        commit_history
+    }
     
 
     /// Cria um objeto .minigit no repositório.

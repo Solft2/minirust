@@ -29,11 +29,13 @@ fn cmd_commit_result(message: String) -> Result<String, String> {
     } else {
         vec![head.clone()]
     };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 
     let commit = CommitObject {
         tree: tree_id,
         author: author.to_string(),
         message: message,
+        timestamp: now,
         parent: parent,
     };
 

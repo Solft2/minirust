@@ -4,6 +4,7 @@ pub struct CommitObject {
     pub tree: String,
     pub author: String,
     pub message: String,
+    pub timestamp: u64,
     pub parent: Vec<String>
 }
 
@@ -13,8 +14,10 @@ impl CommitObject {
         
         let (tree, remainder) = Self::read_value(&content_str);
         let (author, remainder) = Self::read_value(remainder);
-        let (message, mut remainder) = Self::read_value(remainder);
+        let (message, remainder) = Self::read_value(remainder);
+        let (timestamp_str, mut remainder) = Self::read_value(remainder);
 
+        let timestamp: u64 = timestamp_str.parse().expect("Timestamp deve ser um número válido");
         let mut parent: Vec<String> = Vec::new();
 
         while !remainder.is_empty() {
@@ -23,7 +26,7 @@ impl CommitObject {
             remainder = new_remainder;
         }
 
-        Self { tree, author, message, parent }
+        Self { tree, author, message, timestamp, parent }
     }
 
     /// Lê um valor do conteúdo do commit, retornando o valor lido e o restante do conteúdo
@@ -50,7 +53,7 @@ impl CommitObject {
 }
 
 impl RGitObject for CommitObject {
-    /// Ordem precisa ser a mesma da entrada (tree, author, message, parent...)
+    /// Ordem precisa ser a mesma da entrada (tree, author, message, timestamp, parent...)
     fn serialize(&self) -> Vec<u8> {
         let mut result = Vec::new();
         
@@ -62,6 +65,7 @@ impl RGitObject for CommitObject {
         result.extend_from_slice(format!("tree {}\n", self.tree).as_bytes());
         result.extend_from_slice(format!("author {}\n", self.author).as_bytes());
         result.extend_from_slice(format!("message {}\n", message).as_bytes());
+        result.extend_from_slice(format!("timestamp {}\n", self.timestamp).as_bytes());
         for parent in &parent {
             result.extend_from_slice(format!("parent {}\n", parent).as_bytes());
         }

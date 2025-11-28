@@ -17,6 +17,11 @@ pub fn find_repo(current_path: &PathBuf) -> Option<Repository> {
     }
 }
 
+pub fn find_current_repo() -> Option<Repository> {
+    let current_path = std::env::current_dir().unwrap();
+    find_repo(&current_path)
+}
+
 fn has_repository(path: &PathBuf) -> bool {
     path.join(Repository::MINIGITDIR).exists()
 }
