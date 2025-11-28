@@ -158,6 +158,15 @@ impl Repository {
         let (object_type, object_content) = content.split_at(space);
         let object_content = &object_content[1..];
 
+        let null = object_content.iter().position(|x| *x == b'\0').unwrap();
+        let (object_size, object_content) = object_content.split_at(null);
+        let object_content = &object_content[1..];
+        let object_size = std::str::from_utf8(object_size).unwrap().parse::<usize>().unwrap();
+
+        if object_size != object_content.len() {
+            panic!("Objeto foi corrompido!");
+        }
+
         match object_type {
             b"commit" => {
                 let commit = CommitObject::new(object_content.to_vec());

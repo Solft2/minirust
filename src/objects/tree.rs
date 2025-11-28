@@ -10,7 +10,7 @@ pub struct TreeObject {
 pub struct TreeObjectChild {
     pub mode: String,
     pub object_id: String,
-    pub path: String
+    pub name: String
 }
 
 impl RGitObject for TreeObject {
@@ -18,7 +18,7 @@ impl RGitObject for TreeObject {
         let mut result = String::new();
 
         for child in &self.children {
-            let helper = format!("{} {}\0{}\n", &child.mode, &child.path, &child.object_id);
+            let helper = format!("{} {}\0{}\n", &child.mode, &child.name, &child.object_id);
             result.push_str(&helper);
         }
 
@@ -67,8 +67,8 @@ impl TreeObject {
 
         TreeObjectChild { 
             mode: record[..space].to_string(), 
-            object_id: record[space+1..null].to_string(), 
-            path: record[null+1..].to_string()
+            name: record[space+1..null].to_string(),
+            object_id: record[null+1..].to_string() 
         }
     }
 }

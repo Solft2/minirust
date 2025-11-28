@@ -64,7 +64,7 @@ fn instanciate_subtree(repository: &Repository, tree: &TreeObject, current_dir: 
             .get_object(&child.object_id)
             .expect("Objeto da tree deveria existir");
         
-        let path = current_dir.join(child.path.clone());
+        let path = current_dir.join(child.name.clone());
 
         match object {
             RGitObjectTypes::Blob(blob) => {

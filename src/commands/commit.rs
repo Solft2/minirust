@@ -72,7 +72,7 @@ fn create_tree_object(staging_tree: &StagingTree, repo: &mut Repository) -> Stri
                 let tree_child = TreeObjectChild {
                     mode: "100644".to_string(),
                     object_id: child_id,
-                    path: name.clone(),
+                    name: name.clone(),
                 };
 
                 object.children.push(tree_child);

@@ -8,6 +8,8 @@ pub mod log;
 pub mod merge;
 pub mod add;
 pub mod checkout;
+pub mod ls_tree;
+
 use clap::{Parser, Subcommand};
 
 
@@ -33,6 +35,9 @@ pub enum Commands {
     Commit {
         message: String
     },
+    LsTree {
+        tree_id: String
+    },
     HashRust {
         #[arg(short, long)]
         write: bool,
@@ -54,6 +59,7 @@ pub fn cli_main() {
         Add { file } => add::cmd_add(&file),
         Checkout { commit_id } => checkout::cmd_checkout(&commit_id),
         Commit { message } => commit::cmd_commit(message),
+        LsTree { tree_id } => ls_tree::cmd_ls_tree(tree_id),
         Commands::HashRust { write, file } => hash_rust::cmd_hash_object(&file, write),
         CatFile { hash } => cat_file::cmd_cat_file(&hash),
         WriteTree => tree_rust::cmd_write_tree(),
