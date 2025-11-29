@@ -47,6 +47,7 @@ impl Repository {
             let absolute_path = self.worktree.join(&relative_path);
 
             if ignore.check_ignore(&relative_path) {
+                continue;
             } else if absolute_path.exists() {
                 let blob = BlobObject::from(&absolute_path);
                 let hash = self.create_object(&blob);
@@ -287,6 +288,43 @@ impl Repository {
                 std::fs::remove_file(&entry_path).unwrap();
             }
         }
+    }
+
+    pub fn delete_branch(&mut self, branch_name: &String) -> Result<(), String> {
+        let branch_path_str = format!("refs/heads/{}", branch_name);
+        let parts = branch_path_str.split('/').collect::<Vec<&str>>();
+        let branch_path = self.get_repository_path(parts.as_slice());
+
+        if !branch_path.exists() {
+            return Err(String::from(format!("Branch {} não existe!", branch_name)));
+        }
+
+        let current_head = self.get_head();
+
+        if current_head == format!("ref: refs/heads/{}", branch_name) {
+            return Err(String::from("Não é possível deletar a branch atualmente ativa"));
+        }
+
+        std::fs::remove_file(&branch_path).map_err(|_| "Erro ao deletar a branch")?;
+
+        Ok(())
+    }
+
+    pub fn create_branch(&mut self, branch_name: &String) -> Result<(), String> {
+        let branch_path_str = format!("refs/heads/{}", branch_name);
+        let parts = branch_path_str.split('/').collect::<Vec<&str>>();
+        let branch_path = self.get_repository_path(parts.as_slice());
+
+        if branch_path.exists() {
+            return Err(String::from(format!("Branch {} já existe!", branch_name)));
+        }
+
+        let head_commit = self.resolve_head();
+        let branch_path_parent = branch_path.parent().ok_or("Erro ao criar a branch")?;
+        std::fs::create_dir_all(&branch_path_parent).map_err(|_| "Erro ao criar a branch")?;
+        std::fs::write(&branch_path, head_commit).map_err(|_| "Erro ao criar a branch")?;
+
+        Ok(())
     }
 }
 

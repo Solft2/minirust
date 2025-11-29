@@ -1,6 +1,6 @@
 use std::{path::PathBuf};
 
-use crate::{Repository, objects::{RGitObjectTypes, TreeObject}, utils::{create_dir, create_file, find_repo, resolve_ref}};
+use crate::{Repository, objects::{RGitObjectTypes, TreeObject}, utils::{create_dir, create_file, find_current_repo, resolve_ref}};
 
 
 pub fn cmd_checkout(reference_to_commit: &String) {
@@ -15,11 +15,8 @@ pub fn cmd_checkout(reference_to_commit: &String) {
 }
 
 fn execute_checkout(reference_to_commit: &String) -> Result<(), String> {
-    let current_dir = std::env::current_dir()
-        .expect("Deveria conseguir ler o diretório atual");
-
-    let mut repository = find_repo(&current_dir)
-        .ok_or("Não é um repositório minigit")?;
+    let mut repository = find_current_repo()
+        .ok_or("Diretório não está dentro um repositório minigit")?;
 
     repository.change_head(reference_to_commit)?;
 
