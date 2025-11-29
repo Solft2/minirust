@@ -43,20 +43,16 @@ impl Repository {
         let mut staging = StagingArea::new(self);
         let ignore = RGitIgnore::new(self);
 
-        println!("Adicionando arquivos ao staging area...");
         for relative_path in relative_file_paths {
             let absolute_path = self.worktree.join(&relative_path);
 
             if ignore.check_ignore(&relative_path) {
-                println!("Ignorando arquivo {:?}", relative_path);
             } else if absolute_path.exists() {
-                println!("Adicionando arquivo {:?}", relative_path);
                 let blob = BlobObject::from(&absolute_path);
                 let hash = self.create_object(&blob);
                 let entry = StagingEntry::from((&absolute_path, &hash, &self.worktree));
                 staging.update_or_create_entry(entry);
             } else {
-                println!("Arquivo {:?} não existe mais. Removendo do staging area.", relative_path);
                 staging.remove_entry_with_path(&relative_path);
             }
         }
@@ -73,8 +69,7 @@ impl Repository {
 
     /// Retorna o hash do commit apontado pelo HEAD do repositório
     pub fn resolve_head(&self) -> String {
-        let ref_string = std::fs::read_to_string(&self.head_path).unwrap();
-        resolve_ref(&ref_string, self)
+        resolve_ref(Repository::HEAD, self).unwrap()
     }
 
     /// Retorna o nome da referência apontada pelo HEAD do repositório
@@ -88,12 +83,34 @@ impl Repository {
         }
     }
 
-    pub fn update_head(&mut self, commit_id: &String) {
+    pub fn update_curr_branch(&mut self, commit_id: &String) {
         let head_ref = self.get_head();
         let head_path = self.minigitdir.join(head_ref);
 
         std::fs::write(&head_path, commit_id).unwrap();
     }
+
+    pub fn change_head(&mut self, new_head: &String) -> Result<(), String> {
+        let head_path = self.minigitdir.join(Repository::HEAD);
+        let is_commit = self.get_object(new_head).is_some();
+
+        if is_commit {
+            std::fs::write(&head_path, new_head).unwrap();
+            return Ok(());
+        }
+
+        let is_branch = self.get_repository_path(&["refs", "heads"]).join(new_head).exists();
+
+        if is_branch {
+            let ref_path = format!("refs/heads/{}", new_head);
+            std::fs::write(&head_path, format!("ref: {}", ref_path)).map_err(|_| "Erro ao atualizar o HEAD")?;
+            return Ok(());
+        }
+
+        Err(String::from("Novo HEAD não é um commit ou uma branch válida"))
+    }
+
+
 
     /// Constroí um caminho de arquivo a partir da pasta .minigit do repositório
     /// 

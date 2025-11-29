@@ -44,7 +44,7 @@ fn cmd_commit_result(message: String) -> Result<String, String> {
     };
 
     repo.create_object(&commit);
-    repo.update_head(&commit.hash());
+    repo.update_curr_branch(&commit.hash());
 
     Ok(commit.hash())
 }

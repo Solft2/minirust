@@ -1,12 +1,12 @@
 use std::{path::PathBuf};
 
-use crate::{Repository, objects::{RGitObjectTypes, TreeObject}, utils::{create_dir, create_file, find_repo}};
+use crate::{Repository, objects::{RGitObjectTypes, TreeObject}, utils::{create_dir, create_file, find_repo, resolve_ref}};
 
 
-pub fn cmd_checkout(commit_id: &String) {
-    match execute_checkout(commit_id) {
+pub fn cmd_checkout(reference_to_commit: &String) {
+    match execute_checkout(reference_to_commit) {
         Ok(..) => {
-            println!("Indo para o commit {}", commit_id)
+            println!("Indo para o commit {}", reference_to_commit)
         },
         Err(err) => {
             println!("Erro: {}.", err);
@@ -14,15 +14,20 @@ pub fn cmd_checkout(commit_id: &String) {
     }
 }
 
-fn execute_checkout(commit_id: &String) -> Result<(), String> {
+fn execute_checkout(reference_to_commit: &String) -> Result<(), String> {
     let current_dir = std::env::current_dir()
         .expect("Deveria conseguir ler o diretório atual");
 
     let mut repository = find_repo(&current_dir)
         .ok_or("Não é um repositório minigit")?;
 
+    repository.change_head(reference_to_commit)?;
+
+    let commit_id = resolve_ref(reference_to_commit, &repository)
+        .ok_or("Não é um commit reconhecido pelo minigit")?;
+
     let object = repository
-        .get_object(commit_id)
+        .get_object(&commit_id)
         .ok_or("Não existe um objeto com este ID")?;
 
     repository.clear_worktree();
@@ -51,8 +56,6 @@ fn execute_checkout(commit_id: &String) -> Result<(), String> {
         }
     }
 
-
-
     Ok(())
 }
 
@@ -72,10 +75,10 @@ fn instanciate_subtree(repository: &mut Repository, tree: &TreeObject, current_d
         match object {
             RGitObjectTypes::Blob(blob) => {
                 create_file(&path, &blob.content);
+
                 repository.add_files(vec![relative_path.to_path_buf()]);
             },
             RGitObjectTypes::Tree(tree) => {
-                println!("Criando diretório {:?}", path);
                 create_dir(&path);
 
                 instanciate_subtree(repository, &tree, &path);
