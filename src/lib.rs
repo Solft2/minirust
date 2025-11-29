@@ -28,7 +28,7 @@ impl Repository {
         let head_path = minigit_path.join(Self::HEAD);
         let index_path = minigit_path.join(Self::INDEX);
 
-        let config_bytes = std::fs::read(&config_path).unwrap();
+        let config_bytes = std::fs::read(&config_path).unwrap_or_default();
 
         Repository {
             worktree: path.to_path_buf(),
@@ -243,6 +243,33 @@ impl Repository {
         let object_type_str = std::str::from_utf8(object_type).unwrap().to_string();
 
         (object_type_str, object_size, object_content.to_vec())
+    }
+
+    pub fn clear_worktree(&mut self) {
+        Self::clear_directory(&self.worktree, &RGitIgnore::new(self), self);
+    }
+
+    fn clear_directory(absolute_path: &PathBuf, ignore: &RGitIgnore, repo: &Repository) {
+        for entry in std::fs::read_dir(absolute_path).unwrap() {
+            let entry = entry.unwrap();
+            let entry_path = entry.path();
+
+            if entry_path.is_dir() {
+                Self::clear_directory(&entry_path, ignore, repo);
+
+                if entry_path.read_dir().unwrap().next().is_none() {
+                    std::fs::remove_dir(&entry_path).unwrap();
+                }
+                
+                continue;
+            }
+
+            let relative_path = entry_path.strip_prefix(&repo.worktree).unwrap();
+
+            if !ignore.check_ignore(&relative_path.to_path_buf()) {
+                std::fs::remove_file(&entry_path).unwrap();
+            }
+        }
     }
 }
 

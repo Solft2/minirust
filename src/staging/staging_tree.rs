@@ -7,25 +7,32 @@ pub enum StagingTree {
 
 impl StagingTree {
     pub fn insert(&mut self, blob_id: String, path: PathBuf) {
-        if let Some(parent) = path.parent() {
-            let parent_name = parent.to_str().unwrap();
-            if parent_name == "" {
-                match self {
-                    StagingTree::Blob(_) => {}
-                    StagingTree::Fork(children) => {
-                        let child_name = path.to_str().unwrap().to_string();
-                        children.insert(child_name, Box::new(StagingTree::Blob(blob_id)));
-                    }
-                }
-            } else {
-                match self {
-                    StagingTree::Blob(_) => {},
-                    StagingTree::Fork(children) => {
-                        let mut new_tree = StagingTree::Fork(HashMap::new());
-                        let path_without_parent = path.strip_prefix(parent).unwrap().to_path_buf();
-                        new_tree.insert(blob_id, path_without_parent);
+        let mut components = path.components();
 
-                        children.insert(parent_name.to_string(), Box::new(new_tree));
+        if let Some(root) = components.next() {
+            let next = components.next();
+            let root_str = root.as_os_str().to_str().unwrap().to_string();
+
+            match next {
+                None => {
+                    match self {
+                        StagingTree::Blob(_) => {}
+                        StagingTree::Fork(children) => {
+                            let child_name = root.as_os_str().to_str().unwrap().to_string();
+                            children.insert(child_name, Box::new(StagingTree::Blob(blob_id)));
+                        }
+                    }
+                },
+                Some(_) => {
+                    match self {
+                        StagingTree::Blob(_) => {},
+                        StagingTree::Fork(children) => {
+                            let mut new_tree = StagingTree::Fork(HashMap::new());
+                            let path_without_root = path.strip_prefix(root.as_os_str()).unwrap().to_path_buf();
+                            new_tree.insert(blob_id, path_without_root);
+
+                            children.insert(root_str, Box::new(new_tree));
+                        }
                     }
                 }
             }

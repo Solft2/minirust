@@ -67,6 +67,7 @@ fn create_tree_object(staging_tree: &StagingTree, repo: &mut Repository) -> Stri
 
     match staging_tree {
         StagingTree::Blob(blob_id) => {
+            println!("Encontrado blob com id {}", blob_id);
             return blob_id.clone();
         },
         StagingTree::Fork(children) => {
