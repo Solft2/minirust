@@ -98,12 +98,19 @@ impl Repository {
     /// Entra em pânico se o HEAD estiver destacado ou corrompido.
     pub fn update_curr_branch(&mut self, commit_id: &String) {
         let head_ref = self.get_head();
-        let head_path = self.minigitdir.join(head_ref);
-        let head_path = head_path.join("index");
+        let mut head_path = self.minigitdir.join(head_ref);
+        head_path = head_path.join("index");
 
         if !head_path.exists() {
             panic!("HEAD está corrompido ou destacado!");
         }
+
+        std::fs::write(&head_path, commit_id).unwrap();
+    }
+
+    pub fn update_head(&mut self, commit_id: &String) {
+        let head_ref = self.get_head();
+        let head_path = self.minigitdir.join(head_ref);
 
         std::fs::write(&head_path, commit_id).unwrap();
     }
