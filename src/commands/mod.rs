@@ -10,6 +10,7 @@ pub mod add;
 pub mod checkout;
 pub mod ls_tree;
 pub mod config;
+pub mod clone;
 pub mod reset;
 
 use clap::{Parser, Subcommand};
@@ -25,6 +26,10 @@ pub struct CliArgs {
 #[derive(Subcommand)]
 pub enum Commands {
     Init,
+    Clone {
+        repository_path: String,
+        destination_path: String,
+    },
     Log,
     Branch {
         #[arg(short, long)]
@@ -66,6 +71,7 @@ pub fn cli_main() {
 
     match args.command {
         Init => init::cmd_init(),
+        Clone { repository_path, destination_path } => clone::cmd_clone(&repository_path, &destination_path),
         Log => log::cmd_log(),
         Branch { branch_name, delete } => branch::cmd_branch(branch_name, delete),
         Merge => merge::cmd_merge(),

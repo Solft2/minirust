@@ -54,7 +54,7 @@ fn execute_checkout(reference_to_commit: &String) -> Result<(), String> {
 /// Instancia o commit ou a tree na worktree do repositório
 /// 
 /// Essa função deve dar pânico se algum erro ocorrer, pois isso indica que o repositório está corrompido.
-fn instanciate_commit(object: RGitObjectTypes, repository: &mut Repository) {
+pub fn instanciate_commit(object: RGitObjectTypes, repository: &mut Repository) {
     match object {
         RGitObjectTypes::Commit(commit) => {
             // Assumimos apenas uma tree
