@@ -1,6 +1,6 @@
 use std::{path::PathBuf};
 
-use crate::{Repository, objects::{RGitObjectTypes, TreeObject}, utils::{create_dir, create_file, find_current_repo, resolve_ref}};
+use crate::{Repository, objects::{RGitObjectTypes, TreeObject}, utils::{create_dir, create_file, find_current_repo, is_valid_sha1, resolve_head_or_branch_name}};
 
 
 pub fn cmd_checkout(reference_to_commit: &String) {
@@ -18,17 +18,43 @@ fn execute_checkout(reference_to_commit: &String) -> Result<(), String> {
     let mut repository = find_current_repo()
         .ok_or("Diretório não está dentro um repositório minigit")?;
 
-    repository.change_head(reference_to_commit)?;
+    let is_commit_id = is_valid_sha1(&reference_to_commit);
 
-    let commit_id = resolve_ref(reference_to_commit, &repository)
-        .ok_or("Não é um commit reconhecido pelo minigit")?;
+    if is_commit_id {
+        repository.clear_worktree();
 
-    let object = repository
-        .get_object(&commit_id)
-        .ok_or("Não existe um objeto com este ID")?;
+        let object = repository
+            .get_object(&reference_to_commit)
+            .ok_or("Não é um commit reconhecido pelo minigit")?;
 
-    repository.clear_worktree();
+        instanciate_commit(object, &mut repository);
+        repository.change_head(reference_to_commit);
+    } else {
+        let commit_id = resolve_head_or_branch_name(&reference_to_commit, &repository)
+            .ok_or("Referência não existe")?;
 
+        repository.clear_worktree();
+        repository.change_head(reference_to_commit);
+
+        if commit_id.is_empty() {
+            return Ok(());
+        }
+
+        let object = repository
+            .get_object(&commit_id)
+            .expect("Branch aponta para referência inválida");
+
+        instanciate_commit(object, &mut repository);
+    }
+
+    Ok(())
+}
+
+
+/// Instancia o commit ou a tree na worktree do repositório
+/// 
+/// Essa função deve dar pânico se algum erro ocorrer, pois isso indica que o repositório está corrompido.
+fn instanciate_commit(object: RGitObjectTypes, repository: &mut Repository) {
     match object {
         RGitObjectTypes::Commit(commit) => {
             // Assumimos apenas uma tree
@@ -38,7 +64,7 @@ fn execute_checkout(reference_to_commit: &String) -> Result<(), String> {
 
             match tree_object {
                 RGitObjectTypes::Tree(tree_object) => {
-                    instanciate_tree(&mut repository, &tree_object);
+                    instanciate_tree(repository, &tree_object);
                 }
                 _ => {
                     panic!("Tree do commit não é uma arvore.");
@@ -46,14 +72,12 @@ fn execute_checkout(reference_to_commit: &String) -> Result<(), String> {
             }
         }
         RGitObjectTypes::Tree(tree_object) => {
-            instanciate_tree(&mut repository, &tree_object);
+            instanciate_tree(repository, &tree_object);
         }
         _ => {
-            return Err(String::from("Objeto não é um commit ou uma tree"));
+            panic!("Objeto não é um commit ou uma tree");
         }
     }
-
-    Ok(())
 }
 
 fn instanciate_tree(repository: &mut Repository, tree: &TreeObject) {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Repository, objects::{CommitObject, RGitObject, TreeObject, TreeObjectChild}, staging::{StagingArea, StagingTree}, utils::{find_repo}};
+use crate::{Repository, objects::{CommitObject, RGitObject, TreeObject, TreeObjectChild}, staging::{StagingArea, StagingTree}, utils::{find_current_repo}};
 
 pub fn cmd_commit(message: String) {
     match cmd_commit_result(message) {
@@ -14,10 +14,12 @@ pub fn cmd_commit(message: String) {
 }
 
 fn cmd_commit_result(message: String) -> Result<String, String> {
-    let current_path = &std::env::current_dir().unwrap();
-
-    let mut repo = find_repo(current_path)
+    let mut repo = find_current_repo()
         .ok_or("Diretório não está dentro um repositório minigit")?;
+
+    if repo.head_detached() {
+        return Err("Não é possível criar um commit com o HEAD destacado".to_string());
+    }
 
     let staging_tree = instantiate_tree_from_index(&mut repo);
 

@@ -27,7 +27,7 @@ fn create_repo(repo: &mut Repository) {
     repo.create_repository_dir(&["refs", "tags"]);
     repo.create_repository_dir(&["refs", "heads"]);
     repo.create_repository_file(&["index"]);
-    repo.create_repository_file(&["refs", "heads", "master"]);
+    repo.create_repository_file(&["refs", "heads", "master", "index"]);
     repo.create_repository_file(&["config"]);
     
     let mut description_file = repo.create_repository_file(&["description"]);

@@ -1,6 +1,6 @@
 use core::panic;
 use std::{fs::File, path::{Path, PathBuf}};
-use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, staging::{StagingArea, StagingEntry}, utils::resolve_ref};
+use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, staging::{StagingArea, StagingEntry}, utils::{is_valid_sha1, reference_exists, resolve_head}};
 
 /// Estrutura que representa o repositório do projeto
 /// 
@@ -70,7 +70,14 @@ impl Repository {
 
     /// Retorna o hash do commit apontado pelo HEAD do repositório
     pub fn resolve_head(&self) -> String {
-        resolve_ref(Repository::HEAD, self).unwrap()
+        resolve_head(self)
+    }
+
+    /// Verifica se o HEAD do repositório está destacado (é um hash de commit direto)
+    pub fn head_detached(&self) -> bool {
+        let head_string = std::fs::read_to_string(&self.head_path).unwrap();
+        let head_string = head_string.trim();
+        !head_string.starts_with("ref: ")
     }
 
     /// Retorna o nome da referência apontada pelo HEAD do repositório
@@ -84,31 +91,37 @@ impl Repository {
         }
     }
 
+    /// Atualiza a branch atual para apontar para o novo commit
+    /// Entra em pânico se o HEAD estiver destacado ou corrompido.
     pub fn update_curr_branch(&mut self, commit_id: &String) {
         let head_ref = self.get_head();
         let head_path = self.minigitdir.join(head_ref);
+        let head_path = head_path.join("index");
+
+        if !head_path.exists() {
+            panic!("HEAD está corrompido ou destacado!");
+        }
 
         std::fs::write(&head_path, commit_id).unwrap();
     }
 
-    pub fn change_head(&mut self, new_head: &String) -> Result<(), String> {
-        let head_path = self.minigitdir.join(Repository::HEAD);
-        let is_commit = self.get_object(new_head).is_some();
-
-        if is_commit {
-            std::fs::write(&head_path, new_head).unwrap();
-            return Ok(());
+    /// Muda o HEAD do repositório para o novo valor
+    /// 
+    /// `new_head` pode ser o hash de um commit ou o nome de uma branch existente.
+    /// Certifique-se de que o valor passado é uma referência existente.
+    pub fn change_head(&mut self, new_head: &String) {
+        if !reference_exists(new_head, self) {
+            panic!("Novo HEAD não é um commit ou uma branch válida");
         }
 
-        let is_branch = self.get_repository_path(&["refs", "heads"]).join(new_head).exists();
-
-        if is_branch {
-            let ref_path = format!("refs/heads/{}", new_head);
-            std::fs::write(&head_path, format!("ref: {}", ref_path)).map_err(|_| "Erro ao atualizar o HEAD")?;
-            return Ok(());
-        }
-
-        Err(String::from("Novo HEAD não é um commit ou uma branch válida"))
+        let is_commit_id = is_valid_sha1(&new_head);
+        let new_head_content = if is_commit_id {
+            new_head.clone()
+        } else {
+            format!("ref: refs/heads/{}", new_head)
+        };
+        
+        std::fs::write(&self.head_path, new_head_content).unwrap();
     }
 
 
@@ -211,6 +224,10 @@ impl Repository {
     }
 
     pub fn get_object(&self, object_id: &String) -> Option<RGitObjectTypes> {
+        if object_id.is_empty() {
+            return None;
+        }
+
         let (dir, file_name) = object_id.split_at(2);
         let file_path = self.get_repository_path(&["objects", dir, file_name]);
         
