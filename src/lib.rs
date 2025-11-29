@@ -12,6 +12,7 @@ pub struct Repository{
     pub minigitdir: PathBuf,
     pub head_path: PathBuf,
     pub index_path: PathBuf,
+    pub refs_heads_path: PathBuf,
     pub config: GitConfig
 }
 
@@ -27,6 +28,7 @@ impl Repository {
         let config_path = minigit_path.join(Self::CONFIG);
         let head_path = minigit_path.join(Self::HEAD);
         let index_path = minigit_path.join(Self::INDEX);
+        let refs_heads_path = minigit_path.join("refs").join("heads");
 
         let config_bytes = std::fs::read(&config_path).unwrap_or_default();
 
@@ -35,6 +37,7 @@ impl Repository {
             minigitdir: minigit_path,
             head_path: head_path,
             index_path: index_path,
+            refs_heads_path: refs_heads_path,
             config: GitConfig::new(config_bytes)
         }
     }
