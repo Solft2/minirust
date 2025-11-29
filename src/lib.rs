@@ -13,6 +13,8 @@ pub struct Repository{
     pub head_path: PathBuf,
     pub index_path: PathBuf,
     pub refs_heads_path: PathBuf,
+    pub merge_head_path: PathBuf,
+    pub orig_head_path: PathBuf,
     pub config: GitConfig
 }
 
@@ -22,12 +24,16 @@ impl Repository {
     const HEAD : &'static str = "HEAD";
     const GITIGNORE : &'static str = ".gitignore";
     const INDEX : &'static str = "index";
+    const MERGE_HEAD : &'static str = "MERGE_HEAD";
+    const ORIG_HEAD : &'static str = "ORIG_HEAD";
 
     pub fn new(path: &Path) -> Self {
         let minigit_path = path.join(Self::MINIGITDIR);
         let config_path = minigit_path.join(Self::CONFIG);
         let head_path = minigit_path.join(Self::HEAD);
         let index_path = minigit_path.join(Self::INDEX);
+        let merge_head_path = minigit_path.join(Self::MERGE_HEAD);
+        let orig_head_path = minigit_path.join(Self::ORIG_HEAD);
         let refs_heads_path = minigit_path.join("refs").join("heads");
 
         let config_bytes = std::fs::read(&config_path).unwrap_or_default();
@@ -38,6 +44,8 @@ impl Repository {
             head_path: head_path,
             index_path: index_path,
             refs_heads_path: refs_heads_path,
+            merge_head_path: merge_head_path,
+            orig_head_path: orig_head_path,
             config: GitConfig::new(config_bytes)
         }
     }
@@ -355,10 +363,10 @@ impl Repository {
     }
 }
 
-pub mod commands;
-pub mod staging;
-pub mod objects;
-pub mod utils;
-pub mod config;
+mod commands;
+mod staging;
+mod objects;
+mod utils;
+mod config;
 
 pub use commands::cli_main;
