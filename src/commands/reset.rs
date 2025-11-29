@@ -1,8 +1,8 @@
 use crate::Repository;
 use crate::commands::checkout::cmd_checkout;
 use std::fs;
+use std::path::Path;
 
-/// Tipos de reset
 #[derive(Debug, Clone, Copy)]
 pub enum ResetTypes {
     Soft,
@@ -10,18 +10,45 @@ pub enum ResetTypes {
     Hard,
 }
 
-/// Realiza o reset de acordo com o tipo
+pub fn cmd_reset(args: Vec<String>) {
+    if args.len() < 2 {
+        eprintln!("Uso correto: minigit reset <modo> <commit-id>");
+        eprintln!("Modos disponíveis: soft, mixed, hard");
+        return;
+    }
+
+    let mode_str = &args[0];
+    let commit_id = &args[1];
+
+    let mode = match mode_str.as_str() {
+        "soft" => ResetTypes::Soft,
+        "mixed" => ResetTypes::Mixed,
+        "hard" => ResetTypes::Hard,
+        _ => {
+            eprintln!("Modo inválido! Use soft, mixed ou hard.");
+            return;
+        }
+    };
+
+    // CARREGA REPOSITÓRIO CORRETAMENTE
+    let path = Path::new(".");
+    let mut repo = Repository::new(path);
+
+    // CHAMA A LÓGICA DO RESET
+    if let Err(e) = reset(&mut repo, commit_id, mode) {
+        eprintln!("Erro executando reset: {}", e);
+    }
+}
+
 pub fn reset(repo: &mut Repository, target_hash: &str, mode: ResetTypes) -> Result<(), String> {
-    // Atualiza o HEAD para o commit alvo
     repo.update_head(&target_hash.to_string());
 
     match mode {
         ResetTypes::Soft => {
-            // Soft: só atualiza o HEAD, não mexe no index nem no working directory
             println!("Soft reset feito para {}", target_hash);
         }
+
         ResetTypes::Mixed => {
-            // Mixed: limpa apenas a staging area (index)
             let index_path = repo.get_repository_path(&["index"]);
             if index_path.exists() {
                 fs::remove_file(&index_path)
@@ -29,16 +56,14 @@ pub fn reset(repo: &mut Repository, target_hash: &str, mode: ResetTypes) -> Resu
             }
             println!("Mixed reset feito para {}", target_hash);
         }
+
         ResetTypes::Hard => {
-            // Hard: limpa index e atualiza working directory
             let index_path = repo.get_repository_path(&["index"]);
             if index_path.exists() {
                 fs::remove_file(&index_path)
                     .map_err(|e| format!("Erro removendo index: {}", e))?;
             }
 
-            // Atualiza arquivos do working tree para o commit
-            // Passamos referência para cmd_checkout, que espera &String
             let commit_id = target_hash.to_string();
             cmd_checkout(&commit_id);
 
