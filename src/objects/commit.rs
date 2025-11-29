@@ -1,5 +1,8 @@
-use crate::{objects::RGitObject, utils::files};
+use std::{collections::HashMap};
 
+use crate::{Repository, objects::{RGitObject, RGitObjectTypes, get_tree_as_map}, utils::files};
+
+#[derive(Debug, Clone)]
 pub struct CommitObject {
     pub tree: String,
     pub author: String,
@@ -58,5 +61,18 @@ impl RGitObject for CommitObject {
 
     fn object_type(&self) -> &'static str {
         "commit"
+    }
+}
+
+
+/// Transforma o commit em um HashMap de caminho de arquivo para blob hash
+pub fn get_commit_tree_as_map(repo: &Repository, commit: &CommitObject) -> HashMap<String, String>{
+    let commit_tree = repo.get_object(&commit.tree).unwrap();
+
+    match commit_tree {
+        RGitObjectTypes::Tree(tree_obj) => {
+            get_tree_as_map(repo, &tree_obj)
+        }
+        _ => panic!("Objeto de árvore esperado para o commit"),
     }
 }

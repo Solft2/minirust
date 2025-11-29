@@ -117,6 +117,11 @@ impl StagingArea {
     }
 }
 
+pub fn rewrite_index(repo: &mut Repository, staging_area: &StagingArea) {
+    let index_file_path = repo.minigitdir.join(Repository::INDEX);
+    std::fs::write(&index_file_path, staging_area.serialize()).unwrap();
+}
+
 fn parse_to<T: FromStr>(s: &str) -> T 
     where
         <T as FromStr>::Err: Debug

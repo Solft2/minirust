@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Repository, objects::{CommitObject, RGitObject, TreeObject, TreeObjectChild}, staging::{StagingArea, StagingTree}, utils::{find_current_repo}};
+use crate::{Repository, objects::{CommitObject, RGitObject, create_tree_object_from_staging_tree}, staging::{StagingArea, StagingTree}, utils::find_current_repo};
 
 pub fn cmd_commit(message: String) {
     match cmd_commit_result(message) {
@@ -23,7 +23,7 @@ fn cmd_commit_result(message: String) -> Result<String, String> {
 
     let staging_tree = instantiate_tree_from_index(&mut repo);
 
-    let tree_id = create_tree_object(&staging_tree, &mut repo);
+    let tree_id = create_tree_object_from_staging_tree(&staging_tree, &mut repo);
 
     let author_name = repo.config.get_username();
     let author_email = repo.config.get_email();
@@ -60,34 +60,4 @@ fn instantiate_tree_from_index(repo: &mut Repository) -> StagingTree {
     }
 
     staging_tree
-}
-
-fn create_tree_object(staging_tree: &StagingTree, repo: &mut Repository) -> String {
-    let mut object = TreeObject {
-        children: Vec::new()
-    };
-
-    match staging_tree {
-        StagingTree::Blob(blob_id) => {
-            println!("Encontrado blob com id {}", blob_id);
-            return blob_id.clone();
-        },
-        StagingTree::Fork(children) => {
-            for (name, child) in children {
-                let child_id = create_tree_object(child, repo);
-
-                let tree_child = TreeObjectChild {
-                    mode: "100644".to_string(),
-                    object_id: child_id,
-                    name: name.clone(),
-                };
-
-                object.children.push(tree_child);
-            }
-        }
-    }
-
-    repo.create_object(&object);
-
-    object.hash()
 }
