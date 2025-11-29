@@ -1,6 +1,6 @@
 use core::panic;
-use std::{fs::File, io::{BufReader, Read, Write}, path::{Path, PathBuf}};
-use crate::{config::GitConfig, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, utils::{read_bytes_from_file, read_string_from_file, resolve_ref, write_bytes_to_file, write_string_to_file}};
+use std::{fs::File, path::{Path, PathBuf}};
+use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, staging::{StagingArea, StagingEntry}, utils::resolve_ref};
 
 /// Estrutura que representa o repositório do projeto
 /// 
@@ -11,6 +11,7 @@ pub struct Repository{
     pub worktree: PathBuf,
     pub minigitdir: PathBuf,
     pub head_path: PathBuf,
+    pub index_path: PathBuf,
     pub config: GitConfig
 }
 
@@ -18,38 +19,67 @@ impl Repository {
     const MINIGITDIR : &'static str = ".minigit";
     const CONFIG : &'static str = "config";
     const HEAD : &'static str = "HEAD";
+    const GITIGNORE : &'static str = ".gitignore";
+    const INDEX : &'static str = "index";
 
     pub fn new(path: &Path) -> Self {
         let minigit_path = path.join(Self::MINIGITDIR);
         let config_path = minigit_path.join(Self::CONFIG);
         let head_path = minigit_path.join(Self::HEAD);
+        let index_path = minigit_path.join(Self::INDEX);
 
-        let config_bytes = read_bytes_from_file(&config_path);
+        let config_bytes = std::fs::read(&config_path).unwrap();
 
         Repository {
             worktree: path.to_path_buf(),
             minigitdir: minigit_path,
             head_path: head_path,
+            index_path: index_path,
             config: GitConfig::new(config_bytes)
         }
+    }
+
+    pub fn add_files(&mut self, relative_file_paths: Vec<PathBuf>) {
+        let mut staging = StagingArea::new(self);
+        let ignore = RGitIgnore::new(self);
+
+        println!("Adicionando arquivos ao staging area...");
+        for relative_path in relative_file_paths {
+            let absolute_path = self.worktree.join(&relative_path);
+
+            if ignore.check_ignore(&relative_path) {
+                println!("Ignorando arquivo {:?}", relative_path);
+            } else if absolute_path.exists() {
+                println!("Adicionando arquivo {:?}", relative_path);
+                let blob = BlobObject::from(&absolute_path);
+                let hash = self.create_object(&blob);
+                let entry = StagingEntry::from((&absolute_path, &hash, &self.worktree));
+                staging.update_or_create_entry(entry);
+            } else {
+                println!("Arquivo {:?} não existe mais. Removendo do staging area.", relative_path);
+                staging.remove_entry_with_path(&relative_path);
+            }
+        }
+        
+        std::fs::write(&self.index_path, staging.serialize()).unwrap();
     }
 
     /// Atualiza o arquivo de configuração do repositório
     pub fn update_config(&mut self, key: String, value: String) {
         self.config.set(key, value);
         let config_path = self.minigitdir.join(Self::CONFIG);
-        write_bytes_to_file(&config_path, &self.config.serialize());
+        std::fs::write(&config_path, &self.config.serialize()).unwrap();
     }
 
     /// Retorna o hash do commit apontado pelo HEAD do repositório
     pub fn resolve_head(&self) -> String {
-        let ref_string = read_string_from_file(&self.head_path);
+        let ref_string = std::fs::read_to_string(&self.head_path).unwrap();
         resolve_ref(&ref_string, self)
     }
 
     /// Retorna o nome da referência apontada pelo HEAD do repositório
     pub fn get_head(&self) -> String {
-        let head_string = read_string_from_file(&self.head_path); 
+        let head_string = std::fs::read_to_string(&self.head_path).unwrap();
 
         if head_string.starts_with("ref: ") {
             head_string[5..].trim().to_string()
@@ -62,7 +92,7 @@ impl Repository {
         let head_ref = self.get_head();
         let head_path = self.minigitdir.join(head_ref);
 
-        write_string_to_file(&head_path, commit_id);
+        std::fs::write(&head_path, commit_id).unwrap();
     }
 
     /// Constroí um caminho de arquivo a partir da pasta .minigit do repositório
@@ -143,18 +173,23 @@ impl Repository {
     /// 
     /// ## Argumentos
     /// - `object` - O objeto RGit 
-    pub fn create_object<T : RGitObject>(&mut self, object: &T) {
+    /// 
+    /// ## Retorna
+    /// O hash do objeto criado
+    pub fn create_object<T : RGitObject>(&mut self, object: &T) -> String {
         let hash = object.hash();
         let (dir, file_name) = hash.split_at(2);
 
         let path = self.get_repository_path(&["objects", dir, file_name]);
 
         if path.exists() {
-            return;
+            return hash;
         }
 
-        let mut file = self.create_repository_file(&["objects", dir, file_name]);
-        file.write_all(&object.get_object_bytes()).expect("Deveria escrever o conteúdo do objeto");
+        self.create_repository_file(&["objects", dir, file_name]);
+        std::fs::write(&path, object.get_object_bytes()).unwrap();
+
+        hash
     }
 
     pub fn get_object(&self, object_id: &String) -> Option<RGitObjectTypes> {
@@ -165,14 +200,35 @@ impl Repository {
             return None;
         }
 
-        let file = File::open(file_path).unwrap();
-        let mut content: Vec<u8> = Vec::new();
-        let mut reader = BufReader::new(file);
+        let (object_type, object_size, object_content) = Self::split_object_bytes(std::fs::read(&file_path).unwrap());
 
-        reader.read_to_end(&mut content).unwrap();
-        let space = content.iter().position(|x| *x == b' ').unwrap();
+        if object_size != object_content.len() {
+            panic!("Objeto foi corrompido!");
+        }
 
-        let (object_type, object_content) = content.split_at(space);
+        match object_type.as_str() {
+            "commit" => {
+                let commit = CommitObject::new(object_content.to_vec());
+                Some(RGitObjectTypes::Commit(commit))
+            },
+            "blob" => {
+                let blob = BlobObject::new(object_content.to_vec());
+                Some(RGitObjectTypes::Blob(blob))
+            },
+            "tree" => {
+                let tree = TreeObject::new(object_content.to_vec());
+                Some(RGitObjectTypes::Tree(tree))
+            },
+            _ => {
+                panic!("Tipo de objeto desconhecido!");
+            }
+        }
+    }
+
+    fn split_object_bytes(object_bytes: Vec<u8>) -> (String, usize, Vec<u8>) {
+        let space = object_bytes.iter().position(|x| *x == b' ').unwrap();
+
+        let (object_type, object_content) = object_bytes.split_at(space);
         let object_content = &object_content[1..];
 
         let null = object_content.iter().position(|x| *x == b'\0').unwrap();
@@ -184,23 +240,9 @@ impl Repository {
             panic!("Objeto foi corrompido!");
         }
 
-        match object_type {
-            b"commit" => {
-                let commit = CommitObject::new(object_content.to_vec());
-                Some(RGitObjectTypes::Commit(commit))
-            },
-            b"blob" => {
-                let blob = BlobObject::new(object_content.to_vec());
-                Some(RGitObjectTypes::Blob(blob))
-            },
-            b"tree" => {
-                let tree = TreeObject::new(object_content.to_vec());
-                Some(RGitObjectTypes::Tree(tree))
-            },
-            _ => {
-                panic!("Tipo de objeto desconhecido!");
-            }
-        }
+        let object_type_str = std::str::from_utf8(object_type).unwrap().to_string();
+
+        (object_type_str, object_size, object_content.to_vec())
     }
 }
 

@@ -29,7 +29,7 @@ fn create_repo(repo: &mut Repository) {
     repo.create_repository_file(&["index"]);
     repo.create_repository_file(&["refs", "heads", "master"]);
     repo.create_repository_file(&["config"]);
-
+    
     let mut description_file = repo.create_repository_file(&["description"]);
     let mut head_file = repo.create_repository_file(&["HEAD"]);
 

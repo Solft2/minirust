@@ -1,19 +1,34 @@
 use std::fmt::Debug;
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::MetadataExt;
+use std::fs::{File};
+use std::io::{BufRead, BufReader};
 use std::str::FromStr;
-use std::time::UNIX_EPOCH;
 use std::{path::PathBuf};
+
 use crate::Repository;
-use crate::objects::{BlobObject, RGitObject};
 
 /// Uma entrada da staging area
 pub struct StagingEntry {
     pub last_content_change: u64, //seconds
     pub mode_type: u32,
     pub object_hash: String,
-    pub path: PathBuf,
+    pub path: PathBuf, // caminho relativo ao worktree
+}
+
+impl From<(&PathBuf, &String, &PathBuf)> for StagingEntry {
+    fn from((absolute_path, object_hash, workdir): (&PathBuf, &String, &PathBuf)) -> Self {
+        let metadata = absolute_path.metadata().unwrap();
+        let modified_time = metadata.modified().unwrap();
+        let duration_since_epoch = modified_time.duration_since(std::time::UNIX_EPOCH).unwrap();
+        let seconds = duration_since_epoch.as_secs();
+        let relative_path = absolute_path.strip_prefix(workdir).unwrap();
+
+        StagingEntry {
+            last_content_change: seconds,
+            mode_type: 0o100644, // arquivo normal
+            object_hash: object_hash.to_string(),
+            path: relative_path.to_path_buf(),
+        }
+    }
 }
 
 impl StagingEntry {
@@ -52,17 +67,14 @@ impl StagingEntry {
 /// A implementação é através de um arquivo que mantém um mapeamento de caminho -> hash do objeto.
 /// 
 /// Quando o usuário adicionar um arquivo em staging (comando add), devemos atualizar a entrada correspondente
-pub struct StagingArea<'a> {
+pub struct StagingArea {
     pub entries: Vec<StagingEntry>,
-    pub repo: &'a mut Repository
 }
 
-impl<'a> StagingArea<'a> {
-    const INDEX_FILE: &'static str = "index";
-
+impl StagingArea {
     /// Carrega a área de staging do arquivo `index`
-    pub fn new(repo: &'a mut Repository) -> Self {
-        let index_file_path = repo.minigitdir.join(Self::INDEX_FILE);
+    pub fn new(repo: &Repository) -> Self {
+        let index_file_path = repo.minigitdir.join(Repository::INDEX);
 
         let index_file = File::open(&index_file_path).unwrap();
         let reader = BufReader::new(index_file);
@@ -73,72 +85,35 @@ impl<'a> StagingArea<'a> {
             entries.push(StagingEntry::from_string(line));
         }
 
-        StagingArea { entries, repo }
+        StagingArea { entries }
     }
 
     /// Atualiza a entrada de um arquivo. Cria uma caso ela não exista
-    pub fn update_or_create_entry(&mut self, file_path: &PathBuf) {
-        if !file_path.exists() {
-            return;
-        }
+    pub fn update_or_create_entry(&mut self, entry: StagingEntry) {
+        let curr_entry = self.entries.iter().position(|e| e.path == entry.path);
 
-        let curr_entry = self.entries.iter().find(|entry| {
-            entry.path == *file_path
-        });
-
-        let file = File::open(file_path).unwrap();
-        let file_metadata = fs::metadata(file_path).unwrap();
-        let last_content_change = file_metadata
-            .modified()
-            .unwrap()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        if let Some(entry) = curr_entry {
-            if entry.last_content_change == last_content_change {
-                return;
-            }
-        }
-
-        let mut content: Vec<u8> = Vec::new();
-        let mut reader = BufReader::new(file);
-        reader.read_to_end(&mut content).expect("Esperado ler o arquivo");
-        
-        let object = BlobObject::new(content);
-        self.repo.create_object(&object);
-
-        let new_entry = StagingEntry {
-            path: file_path.clone(), 
-            object_hash: object.hash(),
-            mode_type: file_metadata.mode(),
-            last_content_change: last_content_change
-        };
-
-        if let Some(entry) = curr_entry {
-            let position = self.entries.iter().position(|e| e.path == *entry.path).unwrap();
-
-            self.entries[position] = new_entry
+        if let Some(position) = curr_entry {
+            self.entries[position] = entry;
         } else {
-            self.entries.push(new_entry);
+            self.entries.push(entry);
         }
     }
 
-    /// Salva o estado da área de staging no arquivo de índice.
-    /// 
-    /// Este método consome a instância da área de staging, precisando criar uma nova.
-    pub fn save(self) {
-        let index_file_path = self.repo.minigitdir.join(Self::INDEX_FILE);
-        let mut index_file = File::create(index_file_path).expect("Esperado criar o arquivo de índice");
+    pub fn remove_entry_with_path(&mut self, path: &PathBuf) {
+        self.entries.retain(|e| &e.path != path);
+    }
+
+    /// Serializa a área de staging de volta para o arquivo `index`
+    pub fn serialize(&self) -> Vec<u8> {
         let mut index_file_content: Vec<u8> = Vec::new();
 
-        for entry in self.entries {
+        for entry in &self.entries {
             let mut entry_bytes = entry.as_bytes();
             entry_bytes.push(b'\n');
             index_file_content.append(&mut entry_bytes);
         }
 
-        index_file.write_all(&index_file_content).expect("Esperado salvar o índice atual");
+        index_file_content
     }
 }
 

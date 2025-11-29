@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::objects::RGitObject;
 
 pub struct BlobObject {
@@ -21,5 +23,12 @@ impl RGitObject for BlobObject {
 
     fn object_type(&self) -> &'static str {
         "blob"
+    }
+}
+
+impl From<&PathBuf> for BlobObject {
+    fn from(absolute_path: &PathBuf) -> Self {
+        let content = std::fs::read(absolute_path).unwrap();
+        BlobObject { content }
     }
 }

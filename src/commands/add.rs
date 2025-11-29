@@ -1,21 +1,39 @@
-use std::path::PathBuf;
-use crate::staging::StagingArea;
-use crate::Repository;
+use std::{path::PathBuf};
+
+use crate::utils::find_current_repo;
 
 /// Adiciona um arquivo na área de staging
-pub fn cmd_add(file_path: &str) {
-    let file_path = PathBuf::from(file_path);
-
-    let current = std::env::current_dir().expect("Deveria acessar o repositório atual");
-    let mut repo = Repository::new(&current);
-
-    if !repo.minigitdir.exists() {
-        println!("Este diretório não é um repositório Minigit válido. Crie um com o comando 'minigit init'.");
-        return;
+pub fn cmd_add(files: Vec<String>) {
+    match cmd_add_result(files) {
+        Ok(_) => {}
+        Err(e) => {
+            println!("Erro ao adicionar arquivo: {}", e);
+        }
     }
+}
 
-    let mut staging_area = StagingArea::new(&mut repo);
-    staging_area.update_or_create_entry(&file_path);
+fn cmd_add_result(files: Vec<String>) -> Result<(), String> {
+    let curent_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+
+    let mut repo = find_current_repo().ok_or("Não é um repositório minigit")?;
+
+    let paths = files.into_iter().map(|f| {
+        let blob_path = PathBuf::from(&f);
+        curent_dir
+            .join(blob_path)
+            .strip_prefix(&repo.worktree)
+            .unwrap()
+            .to_path_buf()
+    })
+    .filter(|path| {
+        let absolute_path = repo.worktree.join(path);
+        if !absolute_path.is_file() {
+            println!("Aviso: {:?} não é um arquivo regular e será ignorado.", path);
+        }
+        absolute_path.is_file()
+    }).collect();
     
-    staging_area.save();
+    repo.add_files(paths);
+
+    Ok(())
 }

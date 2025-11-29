@@ -1,6 +1,6 @@
 use std::{path::PathBuf, str::FromStr};
 
-use crate::{Repository, utils::read_string_from_file};
+use crate::{Repository};
 
 /// Retorna o hash do commit referenciado pela `reference`
 /// 
@@ -22,7 +22,7 @@ pub fn resolve_ref(reference: &str, repo: &Repository) -> String {
     if reference.contains("/") {
         let path = PathBuf::from_str(reference.trim()).unwrap();
         let full_path = repo.minigitdir.join(path);
-        return read_string_from_file(&full_path);
+        return std::fs::read_to_string(&full_path).unwrap();
     }
 
     return reference.trim().to_string();

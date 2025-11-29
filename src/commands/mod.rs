@@ -28,7 +28,7 @@ pub enum Commands {
     Branch,
     Merge,
     Add {
-        file: String
+        files: Vec<String>
     },
     Checkout {
         commit_id: String
@@ -61,7 +61,7 @@ pub fn cli_main() {
         Log => log::cmd_log(),
         Branch => branch::cmd_branch(),
         Merge => merge::cmd_merge(),
-        Add { file } => add::cmd_add(&file),
+        Add { files } => add::cmd_add(files),
         Checkout { commit_id } => checkout::cmd_checkout(&commit_id),
         Commit { message } => commit::cmd_commit(message),
         LsTree { tree_id } => ls_tree::cmd_ls_tree(tree_id),
