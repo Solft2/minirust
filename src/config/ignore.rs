@@ -63,9 +63,11 @@ impl RGitIgnore {
         
         let mut ignore_dir = relative_path.to_path_buf();
         ignore_dir.pop();
-        while ignore_dir.components().count() > 0 {
+
+        loop {
             let ignore_dir_str = ignore_dir.to_str();
-            
+            let last = ignore_dir.as_os_str().is_empty();
+
             match ignore_dir_str {
                 None => break,
                 Some(s) => { 
@@ -74,7 +76,6 @@ impl RGitIgnore {
                     match maybe_ignore {
                         Ok(ignore_result_option) => {
                             if let Some(ignore_result) = ignore_result_option {
-                                println!("Checking ignore for file: {:?}, result: {:?}", relative_path, ignore_result);
                                 return ignore_result;
                             }
                         }
@@ -82,6 +83,10 @@ impl RGitIgnore {
                     }
                     ignore_dir.pop();
                 }
+            }
+
+            if last {
+                break;
             }
         }
 
@@ -97,25 +102,43 @@ impl RGitIgnore {
             None => return Ok(None),
             Some(rules) => {
                 for rule in rules{
-                    if rule.starts_with('!') {
-                        let glob_str = format!("{}/{}", key, &rule[1..]);
-                        let matches = glob::Pattern::new(&glob_str)?.matches_path(relative_path);
-
-                        if matches {
-                            last_result = Some(false);
-                        }
-                    } else {
-                        let glob_str = format!("{}/{}", key, rule);
-                        let matches = glob::Pattern::new(&glob_str)?.matches_path(relative_path);
-
-                        if matches {
-                            last_result = Some(true);
-                        }
-                    }
+                    let result = Self::mathes_rule(&key, rule, relative_path)?;
+                    last_result = Some(result);
                 }
             }
         }
         
         Ok(last_result)
+    }
+
+    fn mathes_rule(key: &String, rule: &String, relative_path: &Path) -> Result<bool, PatternError> {
+        let prefix = if key.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", key)
+        };
+
+        if rule.starts_with('!') {
+            let glob_str = format!("{}{}", &prefix, &rule[1..]);
+            let glob_str_dir = format!("{}{}/**/*", &prefix, &rule[1..]);
+            let matches = glob::Pattern::new(&glob_str)?.matches_path(relative_path);
+            let matches_dir = glob::Pattern::new(&glob_str_dir)?.matches_path(relative_path);
+
+            if matches || matches_dir {
+                return Ok(false);
+            }
+        } else {
+            let glob_str = format!("{}{}", &prefix, rule);
+            let glob_str_dir = format!("{}{}/**/*", &prefix, rule);
+
+            let matches = glob::Pattern::new(&glob_str)?.matches_path(relative_path);
+            let matches_dir = glob::Pattern::new(&glob_str_dir)?.matches_path(relative_path);
+
+            if matches || matches_dir {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 }

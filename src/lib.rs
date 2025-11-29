@@ -1,6 +1,6 @@
 use core::panic;
 use std::{fs::File, path::{Path, PathBuf}};
-use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, staging::{StagingArea, StagingEntry}, utils::resolve_ref};
+use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, staging::{StagingArea, StagingEntry}, utils::{is_valid_sha1, reference_exists, resolve_head}};
 
 /// Estrutura que representa o repositório do projeto
 /// 
@@ -12,6 +12,7 @@ pub struct Repository{
     pub minigitdir: PathBuf,
     pub head_path: PathBuf,
     pub index_path: PathBuf,
+    pub refs_heads_path: PathBuf,
     pub config: GitConfig
 }
 
@@ -27,6 +28,7 @@ impl Repository {
         let config_path = minigit_path.join(Self::CONFIG);
         let head_path = minigit_path.join(Self::HEAD);
         let index_path = minigit_path.join(Self::INDEX);
+        let refs_heads_path = minigit_path.join("refs").join("heads");
 
         let config_bytes = std::fs::read(&config_path).unwrap_or_default();
 
@@ -35,6 +37,7 @@ impl Repository {
             minigitdir: minigit_path,
             head_path: head_path,
             index_path: index_path,
+            refs_heads_path: refs_heads_path,
             config: GitConfig::new(config_bytes)
         }
     }
@@ -43,20 +46,17 @@ impl Repository {
         let mut staging = StagingArea::new(self);
         let ignore = RGitIgnore::new(self);
 
-        println!("Adicionando arquivos ao staging area...");
         for relative_path in relative_file_paths {
             let absolute_path = self.worktree.join(&relative_path);
 
             if ignore.check_ignore(&relative_path) {
-                println!("Ignorando arquivo {:?}", relative_path);
+                continue;
             } else if absolute_path.exists() {
-                println!("Adicionando arquivo {:?}", relative_path);
                 let blob = BlobObject::from(&absolute_path);
                 let hash = self.create_object(&blob);
                 let entry = StagingEntry::from((&absolute_path, &hash, &self.worktree));
                 staging.update_or_create_entry(entry);
             } else {
-                println!("Arquivo {:?} não existe mais. Removendo do staging area.", relative_path);
                 staging.remove_entry_with_path(&relative_path);
             }
         }
@@ -73,8 +73,14 @@ impl Repository {
 
     /// Retorna o hash do commit apontado pelo HEAD do repositório
     pub fn resolve_head(&self) -> String {
-        let ref_string = std::fs::read_to_string(&self.head_path).unwrap();
-        resolve_ref(&ref_string, self)
+        resolve_head(self)
+    }
+
+    /// Verifica se o HEAD do repositório está destacado (é um hash de commit direto)
+    pub fn head_detached(&self) -> bool {
+        let head_string = std::fs::read_to_string(&self.head_path).unwrap();
+        let head_string = head_string.trim();
+        !head_string.starts_with("ref: ")
     }
 
     /// Retorna o nome da referência apontada pelo HEAD do repositório
@@ -88,12 +94,40 @@ impl Repository {
         }
     }
 
-    pub fn update_head(&mut self, commit_id: &String) {
+    /// Atualiza a branch atual para apontar para o novo commit
+    /// Entra em pânico se o HEAD estiver destacado ou corrompido.
+    pub fn update_curr_branch(&mut self, commit_id: &String) {
         let head_ref = self.get_head();
         let head_path = self.minigitdir.join(head_ref);
+        let head_path = head_path.join("index");
+
+        if !head_path.exists() {
+            panic!("HEAD está corrompido ou destacado!");
+        }
 
         std::fs::write(&head_path, commit_id).unwrap();
     }
+
+    /// Muda o HEAD do repositório para o novo valor
+    /// 
+    /// `new_head` pode ser o hash de um commit ou o nome de uma branch existente.
+    /// Certifique-se de que o valor passado é uma referência existente.
+    pub fn change_head(&mut self, new_head: &String) {
+        if !reference_exists(new_head, self) {
+            panic!("Novo HEAD não é um commit ou uma branch válida");
+        }
+
+        let is_commit_id = is_valid_sha1(&new_head);
+        let new_head_content = if is_commit_id {
+            new_head.clone()
+        } else {
+            format!("ref: refs/heads/{}", new_head)
+        };
+        
+        std::fs::write(&self.head_path, new_head_content).unwrap();
+    }
+
+
 
     /// Constroí um caminho de arquivo a partir da pasta .minigit do repositório
     /// 
@@ -193,6 +227,10 @@ impl Repository {
     }
 
     pub fn get_object(&self, object_id: &String) -> Option<RGitObjectTypes> {
+        if object_id.is_empty() {
+            return None;
+        }
+
         let (dir, file_name) = object_id.split_at(2);
         let file_path = self.get_repository_path(&["objects", dir, file_name]);
         
@@ -270,6 +308,43 @@ impl Repository {
                 std::fs::remove_file(&entry_path).unwrap();
             }
         }
+    }
+
+    pub fn delete_branch(&mut self, branch_name: &String) -> Result<(), String> {
+        let branch_path_str = format!("refs/heads/{}", branch_name);
+        let parts = branch_path_str.split('/').collect::<Vec<&str>>();
+        let branch_path = self.get_repository_path(parts.as_slice());
+
+        if !branch_path.exists() {
+            return Err(String::from(format!("Branch {} não existe!", branch_name)));
+        }
+
+        let current_head = self.get_head();
+
+        if current_head == format!("ref: refs/heads/{}", branch_name) {
+            return Err(String::from("Não é possível deletar a branch atualmente ativa"));
+        }
+
+        std::fs::remove_file(&branch_path).map_err(|_| "Erro ao deletar a branch")?;
+
+        Ok(())
+    }
+
+    pub fn create_branch(&mut self, branch_name: &String) -> Result<(), String> {
+        let branch_path_str = format!("refs/heads/{}", branch_name);
+        let parts = branch_path_str.split('/').collect::<Vec<&str>>();
+        let branch_path = self.get_repository_path(parts.as_slice());
+
+        if branch_path.exists() {
+            return Err(String::from(format!("Branch {} já existe!", branch_name)));
+        }
+
+        let head_commit = self.resolve_head();
+        let branch_path_parent = branch_path.parent().ok_or("Erro ao criar a branch")?;
+        std::fs::create_dir_all(&branch_path_parent).map_err(|_| "Erro ao criar a branch")?;
+        std::fs::write(&branch_path, head_commit).map_err(|_| "Erro ao criar a branch")?;
+
+        Ok(())
     }
 }
 

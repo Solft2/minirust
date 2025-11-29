@@ -26,7 +26,11 @@ pub struct CliArgs {
 pub enum Commands {
     Init,
     Log,
-    Branch,
+    Branch {
+        #[arg(short, long)]
+        delete: bool,
+        branch_name: String
+    },
     Merge,
     Add {
         files: Vec<String>
@@ -63,7 +67,7 @@ pub fn cli_main() {
     match args.command {
         Init => init::cmd_init(),
         Log => log::cmd_log(),
-        Branch => branch::cmd_branch(),
+        Branch { branch_name, delete } => branch::cmd_branch(branch_name, delete),
         Merge => merge::cmd_merge(),
         Add { files } => add::cmd_add(files),
         Checkout { commit_id } => checkout::cmd_checkout(&commit_id),
