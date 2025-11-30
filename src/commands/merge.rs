@@ -6,9 +6,10 @@ use std::{
 
 use crate::{
     Repository,
-    checks::{ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_rebase_in_progress, ensure_no_uncommited_changes},
+    checks::{
+        ensure_merge_in_progress, ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_rebase_in_progress, ensure_no_uncommited_changes
+    },
     commands::{checkout, rebase::create_conflict_blob},
-    merge::{abort_merge, finish_merge, merge_or_rebase_in_progress, start_merge},
     objects::{
         CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index,
         create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map,
@@ -16,7 +17,7 @@ use crate::{
     },
     staging::StagingTree,
     status::non_staged_files,
-    utils::find_current_repo,
+    utils::{find_current_repo, merge_rebase::{abort as abort_merge, finish, start}},
 };
 
 pub fn cmd_merge(branch_name: Option<&String>, abort: bool, continue_: bool) {
@@ -29,7 +30,7 @@ pub fn cmd_merge(branch_name: Option<&String>, abort: bool, continue_: bool) {
     };
 
     if abort {
-        abort_merge(&mut repo);
+        abort_merge(&mut repo, false);
         return;
     }
 
@@ -52,9 +53,7 @@ pub fn cmd_merge(branch_name: Option<&String>, abort: bool, continue_: bool) {
 }
 
 fn continue_merge(repo: &mut Repository) -> Result<(), String> {
-    if !merge_or_rebase_in_progress(repo) {
-        return Err("Não há merge em andamento para continuar.".to_string());
-    }
+    ensure_merge_in_progress(repo)?;
 
     let unstaged = non_staged_files(repo);
     if !unstaged.is_empty() {
@@ -84,20 +83,13 @@ fn continue_merge(repo: &mut Repository) -> Result<(), String> {
 
     repo.update_curr_branch(&commit_hash);
 
-    finish_merge(repo);
+    finish(repo, false);
 
     println!("Merge commit criado: {}", commit_hash);
     Ok(())
 }
 
 fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), String> {
-    if merge_or_rebase_in_progress(repo) {
-        return Err(
-            "Já existe um merge ou rebase em progresso. Use --abort ou resolva os conflitos."
-                .to_string(),
-        );
-    }
-
     ensure_no_detached_head(&repo)?;
     ensure_no_merge_in_progress(&repo)?;
     ensure_no_rebase_in_progress(&repo)?;
@@ -140,9 +132,12 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
         repo.update_curr_branch(&target_hash);
         repo.clear_worktree();
 
-        let target_object = repo
+        let RGitObjectTypes::Commit(target_object) = repo
             .get_object(&target_hash)
-            .ok_or("Objeto da branch alvo não encontrado.")?;
+            .ok_or("Objeto da branch alvo não encontrado.")?
+        else {
+            panic!("Objeto da branch alvo não é um commit.");
+        };
         checkout::instanciate_commit(target_object, repo);
 
         println!(
@@ -154,7 +149,7 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
     }
 
     // Tentar realizar o three-way merge
-    start_merge(repo);
+    start(repo, false);
     std::fs::write(&repo.merge_head_path, &target_hash).expect("Erro ao escrever MERGE_HEAD");
 
     let common_ancestor_hash = find_common_ancestor(repo, &current_head_hash, &target_hash)
@@ -230,7 +225,7 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
     repo.create_object(&merge_commit);
     repo.update_curr_branch(&merge_commit.hash());
 
-    finish_merge(repo);
+    finish(repo, false);
 
     println!("Merge commit criado: {}", merge_commit.hash());
     return Ok(());
