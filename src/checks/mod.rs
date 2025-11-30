@@ -1,4 +1,4 @@
-use crate::{Repository, status::non_staged_files, utils::merge_rebase};
+use crate::{Repository, status::{self, non_staged_files}, utils::merge_rebase};
 
 /// Garante de forma segura que não há arquivos não adicionados no repositório
 /// 
@@ -21,6 +21,24 @@ pub fn ensure_no_non_staged_files(repo: &Repository) -> Result<(), String> {
         return Err(message);
     }
 
+    Ok(())
+}
+
+pub fn ensure_no_uncommited_changes(repo: &Repository) -> Result<(), String> {
+    let uncommited_files = status::get_uncommited_files(repo);
+
+    if !uncommited_files.is_empty() {
+        let file_list = uncommited_files.iter()
+            .map(|f| format!("\n- {}", f.to_str().unwrap()))
+            .collect::<String>();
+
+        let message = String::from("Existem arquivos com mudanças não commitadas no repositório:\n") +
+            "Faça o commit dessas mudanças com 'minigit commit -m <mensagem>' ou descarte as mudanças antes de continuar.\n" +
+            "\nArquivos com mudanças não commitadas:" +
+            &file_list;
+
+        return Err(message);
+    }
     Ok(())
 }
 

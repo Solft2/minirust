@@ -1,7 +1,7 @@
 use core::panic;
 use std::fs;
 
-use crate::{Repository, commands::checkout};
+use crate::{Repository, commands::checkout, objects::RGitObjectTypes};
 
 /// Verifica se há um merge ou rebase em progresso no repositório
 /// 
@@ -26,7 +26,9 @@ pub fn abort(repo: &mut Repository, is_rebase: bool) {
     }
 
     let original_commit = fs::read_to_string(&repo.orig_head_path).unwrap();
-    let commit_object = repo.get_object(&original_commit).unwrap();
+    let RGitObjectTypes::Commit(commit_object) = repo.get_object(&original_commit).unwrap()
+        else { panic!("Commit original inválido") };
+
     repo.update_branch_ref(&repo.get_head(), &original_commit);
 
     repo.clear_worktree();

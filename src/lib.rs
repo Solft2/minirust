@@ -1,5 +1,5 @@
 use core::panic;
-use std::{fs::File, path::{Path, PathBuf}};
+use std::{fs::{self, File}, path::{Path, PathBuf}};
 use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, staging::{StagingArea, StagingEntry}, utils::{is_valid_sha1, reference_exists, refs}};
 
 /// Estrutura que representa o repositório do projeto
@@ -66,7 +66,17 @@ impl Repository {
             } else if absolute_path.exists() {
                 let blob = BlobObject::from(&absolute_path);
                 let hash = self.create_object(&blob);
-                let entry = StagingEntry::from((&absolute_path, &hash, &self.worktree));
+                let last_content_change = fs::metadata(&absolute_path).unwrap().modified().unwrap()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos();
+                
+                let entry = StagingEntry {
+                    last_content_change,
+                    object_hash: hash,
+                    path: relative_path,
+                    mode_type: 0o100644, // arquivo normal
+                };
                 staging.update_or_create_entry(entry);
             } else {
                 staging.remove_entry_with_path(&relative_path);

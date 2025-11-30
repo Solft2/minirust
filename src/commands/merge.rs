@@ -38,7 +38,9 @@ fn execute_merge(branch_name: &String) -> Result<(), String> {
         repo.update_curr_branch(&target_hash);
         repo.clear_worktree();
 
-        let target_object = repo.get_object(&target_hash).ok_or("Objeto da branch alvo não encontrado.")?;
+        let RGitObjectTypes::Commit(target_object) = 
+            repo.get_object(&target_hash).ok_or("Objeto da branch alvo não encontrado.")?
+            else { panic!("Objeto da branch alvo não é um commit."); };
 
         checkout::instanciate_commit(target_object, &mut repo);
 
