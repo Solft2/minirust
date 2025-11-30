@@ -1,4 +1,4 @@
-use crate::commands::hash_rust::sha1sum;
+use crate::utils::sha1sum;
 
 pub trait RGitObject {
     /// Hash do objeto

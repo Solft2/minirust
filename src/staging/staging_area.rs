@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs::{File};
 use std::io::{BufRead, BufReader};
@@ -7,6 +8,7 @@ use std::{path::PathBuf};
 use crate::Repository;
 
 /// Uma entrada da staging area
+#[derive(Debug, Clone)]
 pub struct StagingEntry {
     pub last_content_change: u64, //seconds
     pub mode_type: u32,
@@ -115,6 +117,19 @@ impl StagingArea {
 
         index_file_content
     }
+
+    pub fn get_entries_as_map(&self) -> HashMap<PathBuf, StagingEntry> {
+        let mut entries_map: HashMap<PathBuf, StagingEntry> = HashMap::new();
+        for entry in self.entries.clone() {
+            entries_map.insert(entry.path.clone(), entry);
+        }
+        entries_map
+    }
+}
+
+pub fn rewrite_index(repo: &mut Repository, staging_area: &StagingArea) {
+    let index_file_path = repo.minigitdir.join(Repository::INDEX);
+    std::fs::write(&index_file_path, staging_area.serialize()).unwrap();
 }
 
 fn parse_to<T: FromStr>(s: &str) -> T 

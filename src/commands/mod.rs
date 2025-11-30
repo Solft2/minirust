@@ -13,6 +13,7 @@ pub mod config;
 pub mod clone;
 pub mod reset;
 pub mod status;
+pub mod rebase;
 
 use clap::{Parser, Subcommand};
 
@@ -37,7 +38,14 @@ pub enum Commands {
         delete: bool,
         branch_name: String
     },
-    Merge,
+    Merge {
+        branch_name: String
+    },
+    Rebase {
+        #[arg(long, conflicts_with = "new_base_branch")]
+        continue_: bool,
+        new_base_branch: Option<String>
+    },
     Add {
         files: Vec<String>
     },
@@ -76,7 +84,8 @@ pub fn cli_main() {
         Clone { repository_path, destination_path } => clone::cmd_clone(&repository_path, &destination_path),
         Log => log::cmd_log(),
         Branch { branch_name, delete } => branch::cmd_branch(branch_name, delete),
-        Merge => merge::cmd_merge(),
+        Merge {branch_name} => merge::cmd_merge(&branch_name),
+        Rebase { continue_, new_base_branch } => {rebase::cmd_rebase(continue_, new_base_branch)},
         Add { files } => add::cmd_add(files),
         Checkout { commit_id } => checkout::cmd_checkout(&commit_id),
         Commit { message } => commit::cmd_commit(message),
