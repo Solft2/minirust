@@ -13,6 +13,7 @@ pub mod config;
 pub mod clone;
 pub mod reset;
 pub mod rebase;
+pub mod diff;
 
 use clap::{Parser, Subcommand};
 
@@ -31,6 +32,7 @@ pub enum Commands {
         repository_path: String,
         destination_path: String,
     },
+    Diff,
     Log,
     Branch {
         #[arg(short, long)]
@@ -84,6 +86,7 @@ pub fn cli_main() {
     match args.command {
         Init => init::cmd_init(),
         Clone { repository_path, destination_path } => clone::cmd_clone(&repository_path, &destination_path),
+        Diff => diff::cmd_diff(),
         Log => log::cmd_log(),
         Branch { branch_name, delete } => branch::cmd_branch(branch_name, delete),
         Merge {branch_name} => merge::cmd_merge(&branch_name),
