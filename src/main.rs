@@ -1,7 +1,3 @@
-fn main() {
-    
-    let path = std::env::current_dir().unwrap();
-    println!("Current dir: {}", path.display());
-    
+fn main() {    
     minigit::cli_main();
 }
