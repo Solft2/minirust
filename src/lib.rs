@@ -1,6 +1,6 @@
 use core::panic;
 use std::{fs::File, path::{Path, PathBuf}};
-use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, staging::{StagingArea, StagingEntry}, utils::{is_valid_sha1, reference_exists, resolve_head}};
+use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, staging::{StagingArea, StagingEntry}, utils::{is_valid_sha1, reference_exists, refs}};
 
 /// Estrutura que representa o repositório do projeto
 /// 
@@ -13,6 +13,8 @@ pub struct Repository{
     pub head_path: PathBuf,
     pub index_path: PathBuf,
     pub refs_heads_path: PathBuf,
+    pub merge_head_path: PathBuf,
+    pub orig_head_path: PathBuf,
     pub config: GitConfig
 }
 
@@ -22,12 +24,16 @@ impl Repository {
     const HEAD : &'static str = "HEAD";
     const GITIGNORE : &'static str = ".gitignore";
     const INDEX : &'static str = "index";
+    const MERGE_HEAD : &'static str = "MERGE_HEAD";
+    const ORIG_HEAD : &'static str = "ORIG_HEAD";
 
     pub fn new(path: &Path) -> Self {
         let minigit_path = path.join(Self::MINIGITDIR);
         let config_path = minigit_path.join(Self::CONFIG);
         let head_path = minigit_path.join(Self::HEAD);
         let index_path = minigit_path.join(Self::INDEX);
+        let merge_head_path = minigit_path.join(Self::MERGE_HEAD);
+        let orig_head_path = minigit_path.join(Self::ORIG_HEAD);
         let refs_heads_path = minigit_path.join("refs").join("heads");
 
         let config_bytes = std::fs::read(&config_path).unwrap_or_default();
@@ -38,6 +44,8 @@ impl Repository {
             head_path: head_path,
             index_path: index_path,
             refs_heads_path: refs_heads_path,
+            merge_head_path: merge_head_path,
+            orig_head_path: orig_head_path,
             config: GitConfig::new(config_bytes)
         }
     }
@@ -73,7 +81,26 @@ impl Repository {
 
     /// Retorna o hash do commit apontado pelo HEAD do repositório
     pub fn resolve_head(&self) -> String {
-        resolve_head(self)
+        refs::resolve_head(self)
+    }
+
+    /// Verifica se a referência fornecida existe no repositório
+    /// Referência pode ser o nome de uma branch ou um hash de commit direto
+    /// 
+    pub fn reference_exists(&self, reference: &String) -> bool {
+        refs::reference_exists(reference, self)
+    }
+
+    /// Retorna o hash do commit apontado pela referência fornecida
+    /// Referência pode ser o nome de uma branch ou um hash de commit direto
+    /// 
+    /// Esta função entra em pânico se a referência não existir. Verifique se a referência existe antes de chamar esta função.
+    pub fn resolve_reference(&self, reference: &String) -> String {
+        if !refs::reference_exists(reference, self) {
+            panic!("Referência {} não existe!", reference);
+        }
+
+        refs::resolve_head_or_branch_name(reference, self).unwrap()
     }
 
     /// Verifica se o HEAD do repositório está destacado (é um hash de commit direto)
@@ -98,14 +125,38 @@ impl Repository {
     /// Entra em pânico se o HEAD estiver destacado ou corrompido.
     pub fn update_curr_branch(&mut self, commit_id: &String) {
         let head_ref = self.get_head();
-        let mut head_path = self.minigitdir.join(head_ref);
-        head_path = head_path.join("index");
 
-        if !head_path.exists() {
-            panic!("HEAD está corrompido ou destacado!");
+        if is_valid_sha1(&head_ref) {
+            panic!("HEAD está destacado!");
         }
 
-        std::fs::write(&head_path, commit_id).unwrap();
+        self.update_branch_ref(&head_ref.to_string(), commit_id);
+    }
+
+    /// Atualiza a branch especificada para apontar para o novo commit
+    /// Entra em pânico se a branch não existir
+    pub fn update_branch(&mut self, branch_name: &String, commit_id: &String) {
+        if !self.reference_exists(branch_name) || is_valid_sha1(branch_name) {
+            panic!("Branch {} não existe!", branch_name);
+        }
+
+        let branch_ref_str = format!("refs/heads/{}", branch_name);
+        self.update_branch_ref(&branch_ref_str, commit_id);
+    }
+
+    /// Atualiza a referência de branch especificada para apontar para o novo commit
+    /// Entra em pânico se a referência não existir ou não estiver no formato '/refs/heads/...'
+    pub fn update_branch_ref(&mut self, branch_ref: &String, commit_id: &String) {
+        let branch_head = refs::resolve_ref_path(branch_ref, self);
+
+        if branch_head.is_none() {
+            panic!("Referência {} não existe!", branch_ref);
+        }
+
+        let branch_path_str = format!("{}/index", branch_ref);
+        let parts = branch_path_str.split('/').collect::<Vec<&str>>();
+        let branch_path = self.get_repository_path(parts.as_slice());
+        std::fs::write(&branch_path, commit_id).unwrap();
     }
 
     pub fn update_head(&mut self, commit_id: &String) {
@@ -178,11 +229,18 @@ impl Repository {
         File::create(path).expect("Deveria criar o arquivo")
     }
 
-    /// Retorna o histórico de commits do repositório, começando do HEAD
     pub fn get_commit_history(&self) -> Vec<CommitObject> {
+        self.get_commit_history_from_commit(&self.resolve_head())
+    }
+
+    /// Retorna o histórico de commits do repositório a partir do commit fornecido
+    /// Os commits estão ordenados do mais recente para o mais antigo
+    /// Entra em pânico se o commit não existir
+    fn get_commit_history_from_commit(&self, start_commit: &String) -> Vec<CommitObject> {
         let mut stack_of_ids: Vec<String> = Vec::new();
         let mut commit_history: Vec<CommitObject> = Vec::new();
-        let head = self.resolve_head();
+        let head = start_commit.clone();
+
         if head.is_empty() {
             return commit_history;
         }
@@ -355,10 +413,12 @@ impl Repository {
     }
 }
 
-pub mod commands;
-pub mod staging;
-pub mod objects;
-pub mod utils;
-pub mod config;
+mod commands;
+mod staging;
+mod objects;
+mod utils;
+mod config;
+mod merge;
+mod status;
 
 pub use commands::cli_main;

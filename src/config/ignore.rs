@@ -94,7 +94,6 @@ impl RGitIgnore {
     }
 
     fn check_ignore_rules(&self, key: String, relative_path: &Path) -> Result<Option<bool>, PatternError> {
-        println!("Rules: {:?}", self.scoped_rules);
         let mut last_result: Option<bool> = None;
         let scoped_rules = self.scoped_rules.get(&key);
 

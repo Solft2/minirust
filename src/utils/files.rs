@@ -1,4 +1,4 @@
-use std::{fs::{self, File}, io::{BufReader, Read, Write}, path::PathBuf};
+use std::{fs::{self, File}, io::{Write}, path::PathBuf};
 
 pub fn create_file(path: &PathBuf, content: &Vec<u8>) {
     let mut file = File::create(path).expect("Deveria criar o arquivo.");
@@ -7,18 +7,6 @@ pub fn create_file(path: &PathBuf, content: &Vec<u8>) {
 
 pub fn create_dir(path: &PathBuf) {
     fs::create_dir(path).expect("Deveria criar o diretório");
-}
-
-/// Lê o conteúdo de um arquivo e retorna como vetor de bytes
-/// ## Argumentos
-/// - `path` - Caminho do arquivo a ser lido
-pub fn read_bytes_from_file(path: &PathBuf) -> Vec<u8> {
-    let file = File::open(path).unwrap();
-    let mut reader = BufReader::new(file);
-    let mut content = Vec::new();
-    reader.read_to_end(&mut content).unwrap();
-    
-    content
 }
 
 /// Lê um valor do conteúdo de um arquivo no formato `<chave> <valor>`, retornando o valor lido e o restante do conteúdo
