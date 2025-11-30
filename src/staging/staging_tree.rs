@@ -1,5 +1,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::{Repository, staging::StagingArea};
+
 pub enum StagingTree {
     Blob(String),
     Fork(HashMap<String, Box<StagingTree>>)
@@ -42,4 +44,15 @@ impl StagingTree {
 
         unreachable!();
     }
+}
+
+pub fn instantiate_staging_tree_from_index(repo: &mut Repository) -> StagingTree {
+    let staging_area = StagingArea::new(repo);
+    let mut staging_tree = StagingTree::Fork(HashMap::new());
+
+    for entry in staging_area.entries {
+        staging_tree.insert(entry.object_hash, entry.path);
+    }
+
+    staging_tree
 }

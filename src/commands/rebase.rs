@@ -1,7 +1,7 @@
 use core::panic;
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{collections::{HashMap, HashSet}, path::PathBuf, str::FromStr};
 
-use crate::{Repository, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, create_tree_object_from_staging_tree, get_commit_tree_as_map, instanciate_tree_files}, staging::StagingTree, utils::find_current_repo};
+use crate::{Repository, merge::{finish_merge, merge_state, start_merge}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files}, staging::StagingTree, status::non_staged_files, utils::find_current_repo};
 
 pub fn cmd_rebase(continue_: bool, new_base_reference: Option<String>) {
     match cmd_rebase_result(continue_, new_base_reference) {
@@ -21,25 +21,46 @@ fn cmd_rebase_result(continue_: bool, new_base_reference: Option<String>) -> Res
     }
 
     if continue_ {
-        continue_rebase()?;
-    } else if let Some(branch) = new_base_reference {
+        continue_rebase(&mut repo)?;
+    } else if let Some(branch) = new_base_reference.clone() {
         let exists = repo.reference_exists(&branch);
 
         if !exists {
             return Err("A referência fornecida não existe.".to_string());
         }
 
+        start_merge(&mut repo);
         start_rebase(branch, &mut repo)?;
     } else {
         return Err("Você deve fornecer nova base de branch para rebase.".to_string());
     }
 
+    finish_merge(&mut repo);
     Ok(())
 }
 
-fn continue_rebase() -> Result<(), String> {
-    // Lógica para continuar o rebase
-    println!("Continuando o rebase...");
+fn continue_rebase(repo: &mut Repository) -> Result<(), String> {
+    println!("{:?}", non_staged_files(repo));
+    if !non_staged_files(repo).is_empty() {
+        return Err("Existem arquivos não adicionados no repositório.\nAdicione-os com minigit add ou descarte essas mudanças antes de continuar o rebase.".to_string());
+    }
+
+    let commits_to_apply = merge_state(repo).iter()
+        .map(|hash| {
+            let RGitObjectTypes::Commit(commit) = repo.get_object(hash).unwrap() else {
+                panic!("Objeto referenciado por merge_head não é um commit");
+            };
+            commit
+        })
+        .collect::<Vec<CommitObject>>();
+
+    let original_commit = commits_to_apply.first().unwrap();
+
+    let commit_hash = create_commit_object_from_index(repo, original_commit.message.clone());
+    repo.update_curr_branch(&commit_hash);
+
+    apply_commits(repo, commits_to_apply[1..].to_vec(), repo.get_head())?;
+
     Ok(())
 }
 
@@ -67,25 +88,7 @@ fn start_rebase(new_base_reference: String, repo: &mut Repository) -> Result<(),
 
     repo.update_branch_ref(&current_branch_ref_path, &new_base_head);
 
-    for commit in commits_to_apply {
-        let current_base_head = repo.resolve_head();
-        let RGitObjectTypes::Commit(current_base_head_commit) = repo
-            .get_object(&current_base_head)
-            .unwrap() else {
-                panic!("Objeto referenciado por current_base_head não é um commit");
-            };
-
-        let (merge_tree_id, conflicts) = create_merge_tree(repo, &commit, &current_base_head_commit);
-        
-        if conflicts.is_empty() {
-            let commit_id = create_rebase_commit(repo, &commit, current_base_head.clone(), merge_tree_id);
-            repo.update_branch_ref(&current_branch_ref_path, &commit_id);
-        } else {
-            interrupt_rebase();
-            let conflict_messages = conflicts.join("\n");
-            return Err(format!("Conflitos encontrados durante o rebase nos arquivos:\n{}", conflict_messages));
-        }
-    }
+    apply_commits(repo, commits_to_apply, current_branch_ref_path)?;
 
     let current_base_head = repo.resolve_head();
     let RGitObjectTypes::Commit(current_base_head_commit) = repo
@@ -101,6 +104,42 @@ fn start_rebase(new_base_reference: String, repo: &mut Repository) -> Result<(),
 
     instanciate_tree_files(repo, &current_base_head_commit_tree);
     println!("Rebase concluído. HEAD atual: {}", current_base_head);
+    Ok(())
+}
+
+fn apply_commits(repo: &mut Repository, commits_to_apply: Vec<CommitObject>, current_branch_ref_path: String) -> Result<(), String> {
+    for (index, commit) in commits_to_apply.iter().enumerate() {
+        let current_base_head = repo.resolve_head();
+        let RGitObjectTypes::Commit(current_base_head_commit) = repo
+            .get_object(&current_base_head)
+            .unwrap() else {
+                panic!("Objeto referenciado por current_base_head não é um commit");
+            };
+
+        let (merge_tree_id, conflicts) = create_merge_tree(repo, &commit, &current_base_head_commit);
+        
+        if conflicts.is_empty() {
+            let commit_id = create_rebase_commit(repo, &commit, current_base_head.clone(), merge_tree_id);
+            repo.update_branch_ref(&current_branch_ref_path, &commit_id);
+        } else {
+            let remaining_commits: Vec<CommitObject> = commits_to_apply[index..].to_vec();
+            let RGitObjectTypes::Tree(merge_tree_obj) = repo
+                .get_object(&merge_tree_id)
+                .unwrap() else {
+                    panic!("Objeto referenciado por merge_tree_id não é uma tree");
+                };
+            let merge_tree_files = get_tree_as_map(repo, &merge_tree_obj);
+            let non_conflict_files = get_non_conflict_files(&merge_tree_files, &conflicts);
+
+            instanciate_tree_files(repo, &merge_tree_obj);
+            repo.add_files(non_conflict_files);
+            interrupt_rebase(repo, remaining_commits);
+
+            let conflict_messages = get_conflict_files_messages(&conflicts);
+            return Err(format!("Conflitos encontrados durante o rebase nos arquivos:\n{}", conflict_messages));
+        }
+    }
+
     Ok(())
 }
 
@@ -122,8 +161,15 @@ fn create_rebase_commit(
 
     repo.create_object(&rebase_commit)
 }
-fn interrupt_rebase() {
-    println!("Rebase interrompido devido a conflitos. Resolva os conflitos e use 'rebase --continue' para continuar.");
+
+fn interrupt_rebase(repo: &mut Repository, not_applied_commits: Vec<CommitObject>) {
+    let mut merge_head_content = String::new();
+    for commit in not_applied_commits {
+        merge_head_content.push_str(&commit.hash());
+        merge_head_content.push('\n');
+    }
+
+    std::fs::write(&repo.merge_head_path, merge_head_content).unwrap();
 }
 
 /// Retorna o commit base comum entre os dois históricos, se existir
@@ -161,16 +207,16 @@ fn commits_to_apply(curr_branch_history: Vec<CommitObject>, base_commit: &Option
 /// Cria uma tree no repositório representando o merge commit_a e commit_b.
 /// Retorna o hash da nova tree criada caso não haja conflitos e a lista dos arquivos que deram conflito.
 /// Esta função deve entrar em pânico se ocorrer um erro inesperado.
-fn create_merge_tree(repo: &mut Repository, commit_a: &CommitObject, commit_b: &CommitObject) -> (String, Vec<String>){
+fn create_merge_tree(repo: &mut Repository, commit_a: &CommitObject, commit_b: &CommitObject) -> (String, HashSet<String>){
     let commit_a_tree: HashMap<String, String> = get_commit_tree_as_map(repo, commit_a);
     let commit_b_tree: HashMap<String, String> = get_commit_tree_as_map(repo, commit_b);
     let mut merge_commit_tree: HashMap<String, String> = commit_b_tree.clone();
-    let mut conflicts: Vec<String> = Vec::new();
+    let mut conflicts: HashSet<String> = HashSet::new();
 
     for (file_path, hash_a) in &commit_a_tree {
         if let Some(hash_b) = commit_b_tree.get(file_path) {
             if hash_a != hash_b {
-                conflicts.push(file_path.clone());
+                conflicts.insert(file_path.clone());
             }
         } else {
             merge_commit_tree.insert(file_path.clone(), hash_a.clone());
@@ -212,11 +258,27 @@ fn create_conflict_blob(repo: &mut Repository, content_a: Vec<u8>, content_b: Ve
     conflict_content.extend_from_slice(&content_a);
     conflict_content.extend_from_slice(b"\n=======\n");
     conflict_content.extend_from_slice(&content_b);
-    conflict_content.extend_from_slice(b"\n>>>>>>>\n");
+    conflict_content.extend_from_slice(b"\n>>>>>>>");
 
     let blob = BlobObject {
         content: conflict_content,
     };
 
     repo.create_object(&blob)
+}
+
+fn get_non_conflict_files(merge_tree_files: &HashMap<String, String>, conflicts: &HashSet<String>) -> Vec<PathBuf> {
+    merge_tree_files
+        .keys()
+        .filter(|file_path_str| conflicts.get(*file_path_str).is_none())
+        .cloned()
+        .map(|file_path_str| PathBuf::from_str(&file_path_str).unwrap())
+        .collect()
+}
+
+fn get_conflict_files_messages(conflicts: &HashSet<String>) -> String {
+    conflicts.iter()
+        .map(|file_path| format!("- {}", file_path))
+        .collect::<Vec<String>>()
+        .join("\n")
 }

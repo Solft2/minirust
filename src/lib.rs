@@ -418,5 +418,7 @@ mod staging;
 mod objects;
 mod utils;
 mod config;
+mod merge;
+mod status;
 
 pub use commands::cli_main;

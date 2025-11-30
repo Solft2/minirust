@@ -1,6 +1,6 @@
 use std::{collections::HashMap};
 
-use crate::{Repository, objects::{RGitObject, RGitObjectTypes, get_tree_as_map}, utils::files};
+use crate::{Repository, objects::{RGitObject, RGitObjectTypes, create_tree_object_from_staging_tree, get_tree_as_map}, staging::instantiate_staging_tree_from_index, utils::files};
 
 #[derive(Debug, Clone)]
 pub struct CommitObject {
@@ -64,6 +64,36 @@ impl RGitObject for CommitObject {
     }
 }
 
+/// Cria um objeto de commit a partir do índice atual do repositório.
+/// 
+/// Retorna o hash do commit criado.
+pub fn create_commit_object_from_index(repo: &mut Repository, message: String) -> String {
+    let staging_tree = instantiate_staging_tree_from_index(repo);
+
+    let tree_id = create_tree_object_from_staging_tree(&staging_tree, repo);
+
+    let author_name = repo.config.get_username();
+    let author_email = repo.config.get_email();
+    let author = format!("{} <{}>", author_name, author_email);
+    
+    let head = repo.resolve_head();
+    let parent: Vec<String> = if head.is_empty() {
+        Vec::new()
+    } else {
+        vec![head.clone()]
+    };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+
+    let commit = CommitObject {
+        tree: tree_id,
+        author: author.to_string(),
+        message: message,
+        timestamp: now,
+        parent: parent,
+    };
+
+    return repo.create_object(&commit);
+}
 
 /// Transforma o commit em um HashMap de caminho de arquivo para blob hash
 pub fn get_commit_tree_as_map(repo: &Repository, commit: &CommitObject) -> HashMap<String, String>{
