@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::{collections::HashMap, fs};
 
 use crate::{Repository, objects::{RGitObject, RGitObjectTypes, create_tree_object_from_staging_tree, get_tree_as_map}, staging::instantiate_staging_tree_from_index, utils::files};
 
@@ -69,7 +69,6 @@ impl RGitObject for CommitObject {
 /// Retorna o hash do commit criado.
 pub fn create_commit_object_from_index(repo: &mut Repository, message: String) -> String {
     let staging_tree = instantiate_staging_tree_from_index(repo);
-
     let tree_id = create_tree_object_from_staging_tree(&staging_tree, repo);
 
     let author_name = repo.config.get_username();
@@ -77,11 +76,23 @@ pub fn create_commit_object_from_index(repo: &mut Repository, message: String) -
     let author = format!("{} <{}>", author_name, author_email);
     
     let head = repo.resolve_head();
-    let parent: Vec<String> = if head.is_empty() {
+    let mut parents: Vec<String> = if head.is_empty() {
         Vec::new()
     } else {
         vec![head.clone()]
     };
+    
+    if repo.merge_head_path.exists() {
+        let merge_head_hash = fs::read_to_string(&repo.merge_head_path)
+            .expect("Deveria ser possível ler MERGE_HEAD")
+            .trim()
+            .to_string();
+
+        if !merge_head_hash.is_empty() {
+            parents.push(merge_head_hash);
+        }
+    }
+
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
 
     let commit = CommitObject {
@@ -89,7 +100,7 @@ pub fn create_commit_object_from_index(repo: &mut Repository, message: String) -
         author: author.to_string(),
         message: message,
         timestamp: now,
-        parent: parent,
+        parent: parents,
     };
 
     return repo.create_object(&commit);

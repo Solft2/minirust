@@ -1,4 +1,4 @@
-use crate::{objects::{create_commit_object_from_index}, utils::find_current_repo};
+use crate::{merge::finish_merge, objects::create_commit_object_from_index, utils::find_current_repo};
 
 pub fn cmd_commit(message: String) {
     match cmd_commit_result(message) {
@@ -22,6 +22,11 @@ fn cmd_commit_result(message: String) -> Result<String, String> {
     let commit_hash = create_commit_object_from_index(&mut repo, message);
 
     repo.update_curr_branch(&commit_hash);
+
+    if repo.merge_head_path.exists() {
+        finish_merge(&mut repo);
+        println!("Estado de merge finalizado e limpo");
+    }
 
     Ok(commit_hash)
 }

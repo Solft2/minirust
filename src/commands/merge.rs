@@ -90,6 +90,8 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
 
     // Tentar realizar o three-way merge
     start_merge(repo);
+    std::fs::write(&repo.merge_head_path, &target_hash).expect("Erro ao escrever MERGE_HEAD");
+
     let common_ancestor_hash = find_common_ancestor(repo, &current_head_hash, &target_hash)
         .ok_or("Erro: Sem ancestral comum entre branches, histórias desconexas.")?;
 

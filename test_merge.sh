@@ -19,7 +19,7 @@ minigit checkout develop
 
 echo "Linha 1: Alterada pela Develop" > compartilhado.txt
 minigit add compartilhado.txt
-minigit commit "Muda linha 1 na branch"
+minigit commit "Muda linha 1 na develop"
 
 minigit checkout master
 echo "Linha 1: Alterada pela Master" > compartilhado.txt
