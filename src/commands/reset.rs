@@ -51,8 +51,7 @@ pub fn reset(repo: &mut Repository, target_hash: &str, mode: ResetTypes) -> Resu
         ResetTypes::Mixed => {
             let index_path = repo.get_repository_path(&["index"]);
             if index_path.exists() {
-                fs::remove_file(&index_path)
-                    .map_err(|e| format!("Erro removendo index: {}", e))?;
+                fs::write(&index_path, "").unwrap();
             }
             println!("Mixed reset feito para {}", target_hash);
         }
@@ -60,8 +59,7 @@ pub fn reset(repo: &mut Repository, target_hash: &str, mode: ResetTypes) -> Resu
         ResetTypes::Hard => {
             let index_path = repo.get_repository_path(&["index"]);
             if index_path.exists() {
-                fs::remove_file(&index_path)
-                    .map_err(|e| format!("Erro removendo index: {}", e))?;
+                fs::write(&index_path, "").unwrap();
             }
 
             let commit_id = target_hash.to_string();

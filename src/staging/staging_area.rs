@@ -10,28 +10,13 @@ use crate::Repository;
 /// Uma entrada da staging area
 #[derive(Debug, Clone)]
 pub struct StagingEntry {
-    pub last_content_change: u64, //seconds
+    pub last_content_change: u128, //in nanos
     pub mode_type: u32,
     pub object_hash: String,
     pub path: PathBuf, // caminho relativo ao worktree
 }
 
-impl From<(&PathBuf, &String, &PathBuf)> for StagingEntry {
-    fn from((absolute_path, object_hash, workdir): (&PathBuf, &String, &PathBuf)) -> Self {
-        let metadata = absolute_path.metadata().unwrap();
-        let modified_time = metadata.modified().unwrap();
-        let duration_since_epoch = modified_time.duration_since(std::time::UNIX_EPOCH).unwrap();
-        let seconds = duration_since_epoch.as_secs();
-        let relative_path = absolute_path.strip_prefix(workdir).unwrap();
 
-        StagingEntry {
-            last_content_change: seconds,
-            mode_type: 0o100644, // arquivo normal
-            object_hash: object_hash.to_string(),
-            path: relative_path.to_path_buf(),
-        }
-    }
-}
 
 impl StagingEntry {
     /// Converte a entrada de staging em um array de bytes para ser escrito no arquivo de índice
@@ -56,7 +41,7 @@ impl StagingEntry {
         let parts: Vec<&str> = s.split(' ').collect();
 
         StagingEntry { 
-            last_content_change: parse_to::<u64>(parts[0]), 
+            last_content_change: parse_to::<u128>(parts[0]), 
             mode_type: parse_to::<u32>(parts[1]), 
             object_hash: parts[2].to_string(), 
             path: PathBuf::from(parts[3])

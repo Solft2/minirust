@@ -5,9 +5,18 @@ use std::{
 };
 
 use crate::{
-    Repository, commands::{checkout, rebase::create_conflict_blob}, merge::{abort_merge, finish_merge, merge_or_rebase_in_progress, start_merge}, objects::{
-        CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files
-    }, staging::StagingTree, status::non_staged_files, utils::find_current_repo
+    Repository,
+    checks::{ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_rebase_in_progress, ensure_no_uncommited_changes},
+    commands::{checkout, rebase::create_conflict_blob},
+    merge::{abort_merge, finish_merge, merge_or_rebase_in_progress, start_merge},
+    objects::{
+        CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index,
+        create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map,
+        instanciate_tree_files,
+    },
+    staging::StagingTree,
+    status::non_staged_files,
+    utils::find_current_repo,
 };
 
 pub fn cmd_merge(branch_name: Option<&String>, abort: bool, continue_: bool) {
@@ -50,24 +59,29 @@ fn continue_merge(repo: &mut Repository) -> Result<(), String> {
     let unstaged = non_staged_files(repo);
     if !unstaged.is_empty() {
         return Err(format!(
-            "Você ainda tem mudanças não adicionadas (unstaged). \nResolva os conflitos nos arquivos e rode 'minigit add <arquivos>' antes de continuar.\nArquivos pendentes: {:?}", 
+            "Você ainda tem mudanças não adicionadas (unstaged). \nResolva os conflitos nos arquivos e rode 'minigit add <arquivos>' antes de continuar.\nArquivos pendentes: {:?}",
             unstaged
         ));
     }
 
     if !repo.merge_head_path.exists() {
-        return Err("Arquivo de controle MERGE_HEAD não encontrado. Estado inconsistente.".to_string());
+        return Err(
+            "Arquivo de controle MERGE_HEAD não encontrado. Estado inconsistente.".to_string(),
+        );
     }
 
     let target_hash = std::fs::read_to_string(&repo.merge_head_path)
         .unwrap_or_default()
         .trim()
         .to_string();
-    
-    let message = format!("Merge commit (resolving conflicts from branch hash {})", &target_hash[0..7]);
+
+    let message = format!(
+        "Merge commit (resolving conflicts from branch hash {})",
+        &target_hash[0..7]
+    );
 
     let commit_hash = create_commit_object_from_index(repo, message);
-    
+
     repo.update_curr_branch(&commit_hash);
 
     finish_merge(repo);
@@ -83,6 +97,11 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
                 .to_string(),
         );
     }
+
+    ensure_no_detached_head(&repo)?;
+    ensure_no_merge_in_progress(&repo)?;
+    ensure_no_rebase_in_progress(&repo)?;
+    ensure_no_uncommited_changes(&repo)?;
 
     let current_head_hash = repo.resolve_head();
     if current_head_hash.is_empty() {
@@ -104,7 +123,7 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
         .trim()
         .to_string();
 
-    // Branches iguais  
+    // Branches iguais
     if current_head_hash == target_hash {
         println!("Branch já atualizada.");
         return Ok(());
@@ -174,21 +193,31 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
             }
 
             let all_files = get_tree_as_map(repo, &tree);
-            let safe_files: Vec<PathBuf> = all_files.keys()
+            let safe_files: Vec<PathBuf> = all_files
+                .keys()
                 .filter(|path| !conflicts.contains(*path))
                 .map(|p| PathBuf::from(p))
                 .collect();
 
             repo.add_files(safe_files);
 
-            println!("\nMerge automático falhou; conserte os conflitos e faça o commit do resultado.");
+            println!(
+                "\nMerge automático falhou; conserte os conflitos e faça o commit do resultado."
+            );
             return Ok(());
         }
     }
 
     let msg = format!("Merge branch '{}' into HEAD", branch_name);
-    let author = format!("{} <{}>", repo.config.get_username(), repo.config.get_email());
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let author = format!(
+        "{} <{}>",
+        repo.config.get_username(),
+        repo.config.get_email()
+    );
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
 
     let merge_commit = CommitObject {
         tree: merge_tree_id,
@@ -200,7 +229,7 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
 
     repo.create_object(&merge_commit);
     repo.update_curr_branch(&merge_commit.hash());
-    
+
     finish_merge(repo);
 
     println!("Merge commit criado: {}", merge_commit.hash());

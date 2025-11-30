@@ -1,4 +1,4 @@
-use crate::{Repository, utils::{find_current_repo, is_valid_sha1}};
+use crate::{Repository, checks::{ensure_no_merge_in_progress, ensure_no_rebase_in_progress}, utils::{find_current_repo, is_valid_sha1}};
 
 pub fn cmd_branch(branch_name: String, delete: bool) {
     match cmd_branch_result(branch_name, delete) {
@@ -16,6 +16,9 @@ fn cmd_branch_result(branch_name: String, delete: bool) -> Result<(), String> {
 
     let mut repo = find_current_repo()
         .ok_or("Diretório não está dentro um repositório minigit")?;
+
+    ensure_no_merge_in_progress(&repo)?;
+    ensure_no_rebase_in_progress(&repo)?;
 
     if delete {
         delete_branch(&branch_name, &mut repo)?;
