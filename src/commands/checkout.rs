@@ -1,4 +1,4 @@
-use crate::{Repository, checks::{ensure_no_merge_in_progress, ensure_no_rebase_in_progress, ensure_no_uncommited_changes}, objects::{CommitObject, RGitObjectTypes, tree}, staging::{self, StagingEntry}, utils::{find_current_repo, is_valid_sha1, resolve_head_or_branch_name}};
+use crate::{Repository, checks::{ensure_no_merge_in_progress, ensure_no_rebase_in_progress}, objects::{CommitObject, RGitObjectTypes, tree}, staging::{self, StagingEntry}, status::get_uncommited_files, utils::{find_current_repo, is_valid_sha1, resolve_head_or_branch_name}};
 
 pub fn cmd_checkout(reference_to_commit: &String) {
     match execute_checkout(reference_to_commit) {
@@ -17,7 +17,7 @@ fn execute_checkout(reference_to_commit: &String) -> Result<(), String> {
 
     ensure_no_rebase_in_progress(&repository)?;
     ensure_no_merge_in_progress(&repository)?;
-    ensure_no_uncommited_changes(&repository)?;
+    prompt_uncommited_changes(&repository)?;
     
     let is_commit_id = is_valid_sha1(&reference_to_commit);
 
@@ -56,6 +56,30 @@ fn execute_checkout(reference_to_commit: &String) -> Result<(), String> {
     Ok(())
 }
 
+
+fn prompt_uncommited_changes(repo: &Repository) -> Result<(), String> {
+    let uncommited_files = get_uncommited_files(repo);
+
+    if !uncommited_files.is_empty() {
+        let file_list = uncommited_files.iter()
+            .map(|f| format!("- {}\n", f.to_str().unwrap()))
+            .collect::<String>();
+        
+        println!("As mudanças nos seguintes arquivos serão perdidas:");
+        println!();
+        println!("{}", file_list);
+        println!("Deseja continuar? (y/n): ");
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+
+        if input.trim().to_lowercase() != "y" {
+            return Err("Operação de checkout abortada pelo usuário.".to_string());
+        }
+    }
+
+    Ok(())
+}
 
 /// Instancia o commit ou a tree na worktree do repositório
 /// 

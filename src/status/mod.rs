@@ -62,19 +62,13 @@ fn is_not_ignored(ignore: &RGitIgnore, relative_path: &PathBuf) -> bool {
 
 fn is_non_staged(repo: &Repository, staging_area_entries_map: &HashMap<PathBuf, StagingEntry>,  relative_path: &PathBuf) -> bool {
     let entry_opt = staging_area_entries_map.get(relative_path);
-
+    
     match entry_opt {
         None => true,
         Some(entry) => {
-            let last_staged = entry.last_content_change.clone();
-            let full_path = repo.worktree.join(relative_path);
-            let last_modified = fs::metadata(&full_path).unwrap().modified().unwrap();
-            let last_modified = last_modified
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos();
-
-            last_staged != last_modified
+            let RGitObjectTypes::Blob(blob) = repo.get_object(&entry.object_hash).unwrap()
+                else { panic!("Objeto do staging area não é um blob"); };
+            blob.content != fs::read(repo.worktree.join(relative_path)).unwrap()
         },
     }
 }
@@ -93,7 +87,7 @@ fn is_uncommited(
             let last_staged = entry.last_content_change.clone();
 
             is_non_staged(repo, staging_area_entries_map, relative_path) ||
-            last_staged != last_commit.timestamp
+            last_staged > last_commit.timestamp
         },
     }
 }
