@@ -176,8 +176,9 @@ impl Repository {
     pub fn update_head(&mut self, commit_id: &String) {
         let head_ref = self.get_head();
         let head_path = self.minigitdir.join(head_ref);
+        let index_file_path = head_path.join("index");
 
-        std::fs::write(&head_path, commit_id).unwrap();
+        std::fs::write(&index_file_path, commit_id).unwrap();
     }
 
     /// Muda o HEAD do repositório para o novo valor
