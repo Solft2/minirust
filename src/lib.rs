@@ -6,7 +6,7 @@ use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject,
 /// 
 /// ## Atributos
 /// - `worktree` - Caminho para a pasta raíz do repostitório
-/// - `gitdir` - Caminho para a pasta .rgit do repositório
+/// - `gitdir` - Caminho para a pasta .minigit do repositório
 pub struct Repository{
     pub worktree: PathBuf,
     pub minigitdir: PathBuf,

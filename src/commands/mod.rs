@@ -36,7 +36,9 @@ pub enum Commands {
         delete: bool,
         branch_name: String
     },
-    Merge,
+    Merge {
+        branch_name: String
+    },
     Add {
         files: Vec<String>
     },
@@ -74,7 +76,7 @@ pub fn cli_main() {
         Clone { repository_path, destination_path } => clone::cmd_clone(&repository_path, &destination_path),
         Log => log::cmd_log(),
         Branch { branch_name, delete } => branch::cmd_branch(branch_name, delete),
-        Merge => merge::cmd_merge(),
+        Merge {branch_name} => merge::cmd_merge(&branch_name),
         Add { files } => add::cmd_add(files),
         Checkout { commit_id } => checkout::cmd_checkout(&commit_id),
         Commit { message } => commit::cmd_commit(message),
