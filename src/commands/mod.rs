@@ -67,13 +67,12 @@ pub enum Commands {
         key: String,
         value: String,
     },
-    HashRust {
+    HashObject {
         #[arg(short, long)]
         write: bool,
         file: String,
     },
     CatFile{hash: String},
-    WriteTree,
     Reset {
     files: Vec<String>
 },
@@ -96,9 +95,8 @@ pub fn cli_main() {
         Commit { message } => commit::cmd_commit(message),
         LsTree { tree_id } => ls_tree::cmd_ls_tree(tree_id),
         Config { key, value } => config::cmd_config(key, value),
-        HashRust { write, file } => hash_rust::cmd_hash_object(&file, write),
+        HashObject { write, file } => hash_rust::cmd_hash_object(&file, write),
         CatFile { hash } => cat_file::cmd_cat_file(&hash),
-        WriteTree => tree_rust::cmd_write_tree(),
         Reset { files } => reset::cmd_reset(files),
     }
 }
