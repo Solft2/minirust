@@ -104,7 +104,14 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
         .trim()
         .to_string();
 
+    // Branches iguais  
     if current_head_hash == target_hash {
+        println!("Branch já atualizada.");
+        return Ok(());
+    }
+
+    // Target já está no passado de HEAD
+    if is_ancestor(repo, &target_hash, &current_head_hash) {
         println!("Branch já atualizada.");
         return Ok(());
     }
