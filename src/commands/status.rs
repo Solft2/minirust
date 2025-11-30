@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::{
+    config::RGitIgnore,
     objects::{BlobObject, RGitObject, RGitObjectTypes, TreeObject},
     staging::StagingArea,
     utils::find_current_repo,
@@ -24,10 +25,12 @@ fn cmd_status_result() -> Result<(), String>
 {
     let repo = find_current_repo().ok_or("Não está dentro de um repositório")?;
     let staging_area = StagingArea::new(&repo);
+    let gitignore = RGitIgnore::new(&repo);
 
     show_status_branch(&repo);
+
     let has_staged_changes = compare_head_and_index(&repo, &staging_area)?;
-    let (has_unstaged_changes, has_untracked_files) = index_worktree_status(&repo, &staging_area)?;
+    let (has_unstaged_changes, has_untracked_files) = index_worktree_status(&repo, &staging_area, &gitignore)?;
 
     let worktree_clean = !has_staged_changes && !has_unstaged_changes && !has_untracked_files;
     let nothing_staged_but_worktree_dirty =
@@ -74,8 +77,8 @@ fn compare_head_and_index(repo: &Repository, staging_area: &StagingArea) -> Resu
 
     let head_tree = get_head_tree(repo, &head_commit_id)?;
     let head_dict = tree_to_dict(&head_tree);
+    
     let has_changes = check_staged_changes(staging_area, &head_dict);
-
     Ok(has_changes)
 }
 
@@ -139,10 +142,10 @@ fn check_staged_changes(staging_area: &StagingArea, head_dict: &HashMap<String, 
 }
 
 /// Compara índice com o worktree
-fn index_worktree_status(repo: &Repository, staging_area: &StagingArea) -> Result<(bool, bool), String>
+fn index_worktree_status(repo: &Repository, staging_area: &StagingArea, gitignore: &RGitIgnore) -> Result<(bool, bool), String>
 {
-    let unstaged_files = check_unstaged_changes(repo, staging_area);
-    let untracked_files = collect_untracked_files(&repo.worktree, &repo.worktree, staging_area);
+    let unstaged_files = check_unstaged_changes(repo, staging_area, gitignore);
+    let untracked_files = collect_untracked_files(&repo.worktree, &repo.worktree, staging_area, gitignore);
 
     let has_unstaged_changes = !unstaged_files.is_empty();
     let has_untracked_files = !untracked_files.is_empty();
@@ -160,13 +163,18 @@ fn index_worktree_status(repo: &Repository, staging_area: &StagingArea) -> Resul
     Ok((has_unstaged_changes, has_untracked_files))
 }
 
-fn check_unstaged_changes(repo: &Repository, staging_area: &StagingArea) -> Vec<(PathBuf, &'static str)>
+fn check_unstaged_changes(repo: &Repository, staging_area: &StagingArea, gitignore: &RGitIgnore) -> Vec<(PathBuf, &'static str)>
 {
     staging_area
         .entries
         .iter()
         .filter_map(|entry|
         {
+            if gitignore.check_ignore(&entry.path)
+            {
+                return None;
+            }
+
             let absolute_path = repo.worktree.join(&entry.path);
 
             if !absolute_path.exists()
@@ -253,6 +261,7 @@ fn collect_untracked_files(
     current_dir: &Path,
     worktree: &Path,
     staging_area: &StagingArea,
+    gitignore: &RGitIgnore,
 ) -> Vec<PathBuf>
 {
     let mut untracked = Vec::new();
@@ -261,6 +270,7 @@ fn collect_untracked_files(
         current_dir: &Path,
         worktree: &Path,
         staging_area: &StagingArea,
+        gitignore: &RGitIgnore,
         untracked: &mut Vec<PathBuf>,
     )
     {
@@ -274,7 +284,6 @@ fn collect_untracked_files(
         {
             return;
         }
-
         let Ok(entries) = std::fs::read_dir(current_dir) else
         {
             return;
@@ -286,12 +295,17 @@ fn collect_untracked_files(
 
             if path.is_dir()
             {
-                collect_recursive(&path, worktree, staging_area, untracked);
+                collect_recursive(&path, worktree, staging_area, gitignore, untracked);
             }
             else if path.is_file()
             {
                 if let Ok(relative_path) = path.strip_prefix(worktree)
                 {
+                    if gitignore.check_ignore(&relative_path.to_path_buf())
+                    {
+                        continue;
+                    }
+
                     let is_tracked = staging_area
                         .entries
                         .iter()
@@ -306,6 +320,6 @@ fn collect_untracked_files(
         }
     }
 
-    collect_recursive(current_dir, worktree, staging_area, &mut untracked);
+    collect_recursive(current_dir, worktree, staging_area, gitignore, &mut untracked);
     untracked
 }
