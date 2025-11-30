@@ -40,7 +40,11 @@ pub enum Commands {
         branch_name: String
     },
     Merge {
-        branch_name: String
+        branch_name: Option<String>,
+        #[arg(long)]
+        abort: bool,
+        #[arg(long)]
+        continue_: bool
     },
     Rebase {
         #[arg(long, conflicts_with_all(["abort", "new_base_branch"]))]
@@ -89,7 +93,18 @@ pub fn cli_main() {
         Diff => diff::cmd_diff(),
         Log => log::cmd_log(),
         Branch { branch_name, delete } => branch::cmd_branch(branch_name, delete),
-        Merge {branch_name} => merge::cmd_merge(&branch_name),
+        Merge {branch_name, abort, continue_ } => {
+            if continue_ || abort {
+                merge::cmd_merge(None, abort, continue_);
+            } else {
+                if branch_name.is_none() {
+                    println!("Erro: Forneça o nome da branch, --abort ou --continue");
+                    return;
+                }
+                merge::cmd_merge(branch_name.as_ref(), abort, continue_);
+            }
+
+        },
         Rebase { continue_, abort, new_base_branch } => {rebase::cmd_rebase(continue_, abort, new_base_branch)},
         Add { files } => add::cmd_add(files),
         Checkout { commit_id } => checkout::cmd_checkout(&commit_id),

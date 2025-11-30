@@ -265,7 +265,7 @@ fn create_merge_tree(repo: &mut Repository, commit_a: &CommitObject, commit_b: &
     (merge_tree_id, conflicts)
 }
 
-fn create_conflict_blob(repo: &mut Repository, content_a: Vec<u8>, content_b: Vec<u8>) -> String {
+pub fn create_conflict_blob(repo: &mut Repository, content_a: Vec<u8>, content_b: Vec<u8>) -> String {
     let mut conflict_content: Vec<u8> = Vec::new();
     conflict_content.extend_from_slice(b"<<<<<<< HEAD\n");
     conflict_content.extend_from_slice(&content_a);

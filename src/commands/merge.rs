@@ -1,17 +1,95 @@
-use crate::{Repository, checks::{ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_rebase_in_progress, ensure_no_uncommited_changes}, commands::checkout, objects::RGitObjectTypes, utils::find_current_repo};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    str::FromStr,
+};
 
-pub fn cmd_merge(branch_name: &String) {
-    match execute_merge(branch_name) {
-        Ok(_) => {}
-        Err(err) => {
-            println!("{}", err);
+use crate::{
+    Repository,
+    checks::{
+        ensure_merge_in_progress, ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_rebase_in_progress, ensure_no_uncommited_changes
+    },
+    commands::{checkout, rebase::create_conflict_blob},
+    objects::{
+        CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index,
+        create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map,
+        instanciate_tree_files,
+    },
+    staging::StagingTree,
+    status::non_staged_files,
+    utils::{find_current_repo, merge_rebase::{abort as abort_merge, finish, start}},
+};
+
+pub fn cmd_merge(branch_name: Option<&String>, abort: bool, continue_: bool) {
+    let mut repo = match find_current_repo() {
+        Some(r) => r,
+        None => {
+            println!("Diretório não está dentro um repositório minigit");
+            return;
+        }
+    };
+
+    if abort {
+        abort_merge(&mut repo, false);
+        return;
+    }
+
+    if continue_ {
+        match continue_merge(&mut repo) {
+            Ok(_) => println!("Merge continuado e finalizado com sucesso."),
+            Err(e) => println!("Erro ao continuar merge: {}", e),
+        }
+        return;
+    }
+
+    if let Some(name) = branch_name {
+        match execute_merge(&mut repo, name) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("{}", err);
+            }
         }
     }
 }
 
-fn execute_merge(branch_name: &String) -> Result<(), String> {
-    let mut repo = find_current_repo().ok_or("Diretório não está dentro um repositório minigit")?;
+fn continue_merge(repo: &mut Repository) -> Result<(), String> {
+    ensure_merge_in_progress(repo)?;
 
+    let unstaged = non_staged_files(repo);
+    if !unstaged.is_empty() {
+        return Err(format!(
+            "Você ainda tem mudanças não adicionadas (unstaged). \nResolva os conflitos nos arquivos e rode 'minigit add <arquivos>' antes de continuar.\nArquivos pendentes: {:?}",
+            unstaged
+        ));
+    }
+
+    if !repo.merge_head_path.exists() {
+        return Err(
+            "Arquivo de controle MERGE_HEAD não encontrado. Estado inconsistente.".to_string(),
+        );
+    }
+
+    let target_hash = std::fs::read_to_string(&repo.merge_head_path)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    let message = format!(
+        "Merge commit (resolving conflicts from branch hash {})",
+        &target_hash[0..7]
+    );
+
+    let commit_hash = create_commit_object_from_index(repo, message);
+
+    repo.update_curr_branch(&commit_hash);
+
+    finish(repo, false);
+
+    println!("Merge commit criado: {}", commit_hash);
+    Ok(())
+}
+
+fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), String> {
     ensure_no_detached_head(&repo)?;
     ensure_no_merge_in_progress(&repo)?;
     ensure_no_rebase_in_progress(&repo)?;
@@ -22,7 +100,12 @@ fn execute_merge(branch_name: &String) -> Result<(), String> {
         return Err("Nada para fazer merge, repositório vazio.".to_string());
     }
 
-    let target_branch_path = repo.minigitdir.join("refs").join("heads").join(&branch_name).join("index");
+    let target_branch_path = repo
+        .minigitdir
+        .join("refs")
+        .join("heads")
+        .join(&branch_name)
+        .join("index");
     if !target_branch_path.exists() {
         return Err(format!("Branch {} não existe.", branch_name));
     }
@@ -32,31 +115,123 @@ fn execute_merge(branch_name: &String) -> Result<(), String> {
         .trim()
         .to_string();
 
+    // Branches iguais
     if current_head_hash == target_hash {
         println!("Branch já atualizada.");
         return Ok(());
     }
 
-    // Tentar realizar o merge fast-forward
+    // Target já está no passado de HEAD
+    if is_ancestor(repo, &target_hash, &current_head_hash) {
+        println!("Branch já atualizada.");
+        return Ok(());
+    }
+
+    // Tentar realizar o fast-forward merge
     if is_ancestor(&repo, &current_head_hash, &target_hash) {
         repo.update_curr_branch(&target_hash);
         repo.clear_worktree();
 
-        let RGitObjectTypes::Commit(target_object) = 
-            repo.get_object(&target_hash).ok_or("Objeto da branch alvo não encontrado.")?
-            else { panic!("Objeto da branch alvo não é um commit."); };
+        let RGitObjectTypes::Commit(target_object) = repo
+            .get_object(&target_hash)
+            .ok_or("Objeto da branch alvo não encontrado.")?
+        else {
+            panic!("Objeto da branch alvo não é um commit.");
+        };
+        checkout::instanciate_commit(target_object, repo);
 
-        checkout::instanciate_commit(target_object, &mut repo);
-
-        println!("Merge concluído. Branch {} atualizada para {}.", repo.get_head(), target_hash);
-    } else {
-        return Err("Erro: não é possível fazer Fast-Forward.".to_string());
+        println!(
+            "Merge concluído. Branch {} atualizada para {}.",
+            repo.get_head(),
+            target_hash
+        );
+        return Ok(());
     }
 
+    // Tentar realizar o three-way merge
+    start(repo, false);
+    std::fs::write(&repo.merge_head_path, &target_hash).expect("Erro ao escrever MERGE_HEAD");
+
+    let common_ancestor_hash = find_common_ancestor(repo, &current_head_hash, &target_hash)
+        .ok_or("Erro: Sem ancestral comum entre branches, histórias desconexas.")?;
+
+    println!("Ancestral comum encontrado: {:?}", common_ancestor_hash);
+
+    let head_commit_obj: CommitObject = match repo.get_object(&current_head_hash) {
+        Some(RGitObjectTypes::Commit(c)) => c,
+        _ => return Err("HEAD atual não aponta para um commit válido".to_string()),
+    };
+
+    let target_commit_obj: CommitObject = match repo.get_object(&target_hash) {
+        Some(RGitObjectTypes::Commit(c)) => c,
+        _ => return Err("Branch alvo não aponta para um commit válido".to_string()),
+    };
+
+    let base_commit_obj: CommitObject = match repo.get_object(&common_ancestor_hash) {
+        Some(RGitObjectTypes::Commit(c)) => c,
+        _ => return Err("Ancestral comum inválido".to_string()),
+    };
+
+    let (merge_tree_id, conflicts) =
+        create_three_way_merge_tree(repo, &base_commit_obj, &head_commit_obj, &target_commit_obj);
+
+    let merge_tree_obj = repo.get_object(&merge_tree_id).expect("Tree criada sumiu");
+
+    if let RGitObjectTypes::Tree(tree) = merge_tree_obj {
+        repo.clear_worktree();
+        instanciate_tree_files(repo, &tree);
+
+        if !conflicts.is_empty() {
+            println!("CONFLITOS DETECTADOS!");
+            for file in &conflicts {
+                println!("CONFLICT (content): Merge conflict in {}", file);
+            }
+
+            let all_files = get_tree_as_map(repo, &tree);
+            let safe_files: Vec<PathBuf> = all_files
+                .keys()
+                .filter(|path| !conflicts.contains(*path))
+                .map(|p| PathBuf::from(p))
+                .collect();
+
+            repo.add_files(safe_files);
+
+            println!(
+                "\nMerge automático falhou; conserte os conflitos e faça o commit do resultado."
+            );
+            return Ok(());
+        }
+    }
+
+    let msg = format!("Merge branch '{}' into HEAD", branch_name);
+    let author = format!(
+        "{} <{}>",
+        repo.config.get_username(),
+        repo.config.get_email()
+    );
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+
+    let merge_commit = CommitObject {
+        tree: merge_tree_id,
+        parent: vec![current_head_hash.clone(), target_hash.clone()],
+        author: author,
+        message: msg,
+        timestamp: now,
+    };
+
+    repo.create_object(&merge_commit);
+    repo.update_curr_branch(&merge_commit.hash());
+
+    finish(repo, false);
+
+    println!("Merge commit criado: {}", merge_commit.hash());
     return Ok(());
 }
 
-/// Verifica se 'possible_ancestor' está no histórico de 'descendant'
+/// Verifica se 'possible_ancestor' está na história de 'descendant'
 fn is_ancestor(repo: &Repository, possible_ancestor: &String, descendant: &String) -> bool {
     let mut fila = vec![descendant.clone()];
 
@@ -73,4 +248,99 @@ fn is_ancestor(repo: &Repository, possible_ancestor: &String, descendant: &Strin
     }
 
     return false;
+}
+
+/// Encontra o ancestral comum mais recente entre dois commits
+fn find_common_ancestor(repo: &Repository, commit_a: &String, commit_b: &String) -> Option<String> {
+    let history_a = repo.get_commit_history_from_commit(commit_a);
+    let history_b = repo.get_commit_history_from_commit(commit_b);
+
+    for ca in &history_a {
+        for cb in &history_b {
+            if ca.hash() == cb.hash() {
+                return Some(ca.hash());
+            }
+        }
+    }
+
+    None
+}
+
+fn create_three_way_merge_tree(
+    repo: &mut Repository,
+    base: &CommitObject,
+    ours: &CommitObject,
+    theirs: &CommitObject,
+) -> (String, HashSet<String>) {
+    let map_base = get_commit_tree_as_map(repo, base);
+    let map_ours = get_commit_tree_as_map(repo, ours);
+    let map_theirs = get_commit_tree_as_map(repo, theirs);
+
+    let mut all_paths: HashSet<&String> = HashSet::new();
+    all_paths.extend(map_base.keys());
+    all_paths.extend(map_ours.keys());
+    all_paths.extend(map_theirs.keys());
+
+    let mut final_map: HashMap<String, String> = HashMap::new();
+    let mut conflicts: HashSet<String> = HashSet::new();
+
+    for path in all_paths {
+        let h_base = map_base.get(path);
+        let h_ours = map_ours.get(path);
+        let h_theirs = map_theirs.get(path);
+
+        if h_ours == h_theirs {
+            // Caso 1: Ambos iguais ou ambos deletados
+            if let Some(h) = h_ours {
+                final_map.insert(path.clone(), h.clone());
+            }
+        } else if h_ours == h_base {
+            // Caso 2: Nós (ours) não mexemos, eles (theirs) mexeram, pega a versão deles
+            if let Some(h) = h_theirs {
+                final_map.insert(path.clone(), h.clone());
+            }
+        } else if h_theirs == h_base {
+            // Caso 3: Eles (theirs) não mexeram, nós (ours) mexemos, pega a nossa versão
+            if let Some(h) = h_ours {
+                final_map.insert(path.clone(), h.clone());
+            }
+        } else {
+            // Caso 4: Conflitos, ambos mexeram diferentes
+            conflicts.insert(path.clone());
+
+            let content_ours = if let Some(hash) = h_ours {
+                match repo
+                    .get_object(hash)
+                    .expect("Objeto blob não encontrado no banco")
+                {
+                    RGitObjectTypes::Blob(blob) => blob.content,
+                    _ => panic!("Objeto esperado é um blob"),
+                }
+            } else {
+                Vec::new() // Arquivo deletado
+            };
+
+            let content_theirs = if let Some(hash) = h_theirs {
+                match repo
+                    .get_object(hash)
+                    .expect("Objeto blob não encontrado no banco")
+                {
+                    RGitObjectTypes::Blob(blob) => blob.content,
+                    _ => panic!("Objeto esperado é um blob"),
+                }
+            } else {
+                Vec::new() // Arquivo deletado
+            };
+
+            let conflict_hash = create_conflict_blob(repo, content_ours, content_theirs);
+            final_map.insert(path.clone(), conflict_hash);
+        }
+    }
+    let mut staging_tree = StagingTree::Fork(HashMap::new());
+    for (path_str, hash) in final_map {
+        staging_tree.insert(hash, PathBuf::from_str(&path_str).unwrap());
+    }
+
+    let tree_id = create_tree_object_from_staging_tree(&staging_tree, repo);
+    return (tree_id, conflicts);
 }
