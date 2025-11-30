@@ -14,7 +14,10 @@ const RESET: &str = "\x1b[0m";
 
 pub fn cmd_status()
 {
-    cmd_status_result().unwrap_or_else(|e| eprintln!("Erro ao obter status: {}", e));
+    if let Err(e) = cmd_status_result()
+    {
+        eprintln!("Erro ao obter status: {}", e);
+    }
 }
 
 fn cmd_status_result() -> Result<(), String>
@@ -94,26 +97,20 @@ fn handle_initial_commit(staging_area: &StagingArea) -> Result<bool, String>
 
 fn check_staged_changes(staging_area: &StagingArea, head_dict: &HashMap<String, String>) -> bool
 {
-    let mut has_changes = false;
     let mut changes = Vec::new();
 
     for entry in &staging_area.entries
     {
-        let path_str = entry.path.to_str().unwrap_or("");
+        let path_str = entry.path.to_string_lossy();
 
-        if let Some(head_sha) = head_dict.get(path_str)
+        let action = match head_dict.get(path_str.as_ref())
         {
-            if head_sha != &entry.object_hash
-            {
-                changes.push((entry.path.display().to_string(), "modificado"));
-                has_changes = true;
-            }
-        }
-        else
-        {
-            changes.push((entry.path.display().to_string(), "novo arquivo"));
-            has_changes = true;
-        }
+            Some(head_sha) if head_sha != &entry.object_hash => "modificado",
+            None => "novo arquivo",
+            _ => continue,
+        };
+
+        changes.push((entry.path.display().to_string(), action));
     }
 
     for path in head_dict.keys()
@@ -121,25 +118,24 @@ fn check_staged_changes(staging_area: &StagingArea, head_dict: &HashMap<String, 
         let staging_has_file = staging_area
             .entries
             .iter()
-            .any(|e| e.path.to_str().unwrap_or("") == path);
+            .any(|e| e.path.to_string_lossy() == path.as_str());
 
         if !staging_has_file
         {
             changes.push((path.clone(), "removido"));
-            has_changes = true;
         }
     }
 
     if !changes.is_empty()
     {
         println!("Mudanças a serem commitadas:");
-        for (path, action) in changes
+        for (path, action) in &changes
         {
             println!("  {}{}: {}{}", GREEN, action, path, RESET);
         }
     }
 
-    has_changes
+    !changes.is_empty()
 }
 
 /// Compara índice com o worktree
@@ -175,22 +171,13 @@ fn check_unstaged_changes(repo: &Repository, staging_area: &StagingArea) -> Vec<
 
             if !absolute_path.exists()
             {
-                Some((entry.path.clone(), "removido"))
+                return Some((entry.path.clone(), "removido"));
             }
-            else
-            {
-                let blob = BlobObject::from(&absolute_path);
-                let new_hash = blob.hash();
 
-                if new_hash != entry.object_hash
-                {
-                    Some((entry.path.clone(), "modificado"))
-                }
-                else
-                {
-                    None
-                }
-            }
+            let blob = BlobObject::from(&absolute_path);
+            let new_hash = blob.hash();
+
+            (new_hash != entry.object_hash).then_some((entry.path.clone(), "modificado"))
         })
         .collect()
 }
@@ -220,21 +207,19 @@ fn get_head_tree(repo: &Repository, head_commit_id: &str) -> Result<TreeObject, 
         .get_object(&head_commit_id.to_string())
         .ok_or("Não foi possível obter o commit do HEAD")?;
 
-    match commit
+    let RGitObjectTypes::Commit(c) = commit else
     {
-        RGitObjectTypes::Commit(c) =>
-        {
-            let tree_obj = repo
-                .get_object(&c.tree)
-                .ok_or("Não foi possível obter a tree do commit")?;
+        return Err("HEAD não aponta para um commit".to_string());
+    };
 
-            match tree_obj
-            {
-                RGitObjectTypes::Tree(t) => Ok(t),
-                _ => Err("Objeto referenciado não é uma tree".to_string()),
-            }
-        }
-        _ => Err("HEAD não aponta para um commit".to_string()),
+    let tree_obj = repo
+        .get_object(&c.tree)
+        .ok_or("Não foi possível obter a tree do commit")?;
+
+    match tree_obj
+    {
+        RGitObjectTypes::Tree(t) => Ok(t),
+        _ => Err("Objeto referenciado não é uma tree".to_string()),
     }
 }
 
@@ -286,10 +271,13 @@ fn collect_untracked_files_recursive(
     {
         return;
     }
-    if current_dir.file_name().is_some_and(|name| name == Repository::MINIGITDIR)
+    if current_dir
+        .file_name()
+        .is_some_and(|name| name == Repository::MINIGITDIR)
     {
         return;
     }
+
     let Ok(entries) = std::fs::read_dir(current_dir) else
     {
         return;
