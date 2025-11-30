@@ -1,56 +1,34 @@
 use std::fs;
-use std::io::Write;
-use sha1::{Digest, Sha1};
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
-use crate::Repository;
-
+use std::path::PathBuf;
+use crate::objects::{BlobObject, RGitObject};
+use crate::utils::find_current_repo;
 
 pub fn cmd_hash_object(path: &str, write:bool){
-    // cria uma instancia apontando para .git atual
-    let mut repo = Repository::new(&std::env::current_dir().unwrap());
-    //Lê o conteudo do arquivo em bytes
-    let byte = fs::read(path).expect("Não foi possível ler o arquivo!");
-    //cria o blob no formato padrão
-    let blob = make_blob(&byte);
-    //Calcula o hash sha-1 do arquivo blolb criado anteriormente
-    let hash = sha1sum(&blob);
-
-    if write{
-        write_object(&mut repo,&hash,&blob);
+    match hash_object_command(path,write) {
+        Ok(_) => {},
+        Err(err) => {
+            println!("{}", err);
+        }
     }
-    println!("{}",hash);
-}
-// blolb tamanho\0 conteudo do arquivo
-pub fn make_blob(byte: &[u8]) -> Vec<u8>{
-    let header = format!("blob {}\0", byte.len());
-    let mut blob = header.into_bytes();
-    blob.extend_from_slice(byte);
-    blob
 }
 
-pub fn sha1sum(byte: &[u8]) -> String{
-    let mut hasher = Sha1::new();
-    hasher.update(byte);
-    let result = hasher.finalize();
-    hex::encode(result)
-}
+pub fn hash_object_command(path: &str, write: bool) -> Result<(), String> {
+    let mut repo = find_current_repo().ok_or("Não é um repositório minigit")?;
+    let file_path = PathBuf::from(path);
 
-pub fn write_object(repo: &mut Repository, hash: &str, byte: &[u8]){
-    // divide o blob em 2, os dois primeiros caracteres e o resto
-    let(dir, file) = hash.split_at(2);
-
-    let parts = &["objects", dir, file];
-    let path = repo.get_repository_path(parts);
-    if path.exists() {
-        return;
+    if !file_path.exists() || !file_path.is_file() {
+        return Err("Caminho do arquivo inválido".to_string());
     }
-    
-    repo.create_repository_file(parts);
-    //compacta
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(byte).unwrap();
-    let compressed = encoder.finish().unwrap();
-    //Escreve o blolb compactado no disco
-    fs::write(path, compressed).unwrap();
+
+    let bytes = fs::read(file_path).map_err(|_| "Não foi possível ler o arquivo".to_string())?;
+    let blob =  BlobObject { content: bytes } ;
+
+    println!("Hash SHA-1 do arquivo: {}", blob.hash());
+
+    if write {
+        repo.create_object(&blob);
+        println!("Objeto blob escrito no repositório.");
+    }
+
+    Ok(())
 }
