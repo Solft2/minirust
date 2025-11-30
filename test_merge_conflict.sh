@@ -1,4 +1,3 @@
-alias minigit=/home/vinic/UFRN/2025.2/Rust/minirust/target/release/minigit
 #!/bin/bash
 
 echo "--- Limpando ambiente de teste ---"
