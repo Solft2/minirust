@@ -144,7 +144,18 @@ fn check_staged_changes(staging_area: &StagingArea, head_dict: &HashMap<String, 
 /// Compara índice com o worktree
 fn index_worktree_status(repo: &Repository, staging_area: &StagingArea, gitignore: &RGitIgnore) -> Result<(bool, bool), String>
 {
-    let unstaged_files = check_unstaged_changes(repo, staging_area, gitignore);
+    let head_commit_id = repo.resolve_head();
+
+    let head_dict = if !head_commit_id.is_empty()
+    {
+        let head_tree = get_head_tree(repo, &head_commit_id)?;
+        tree_to_dict(&head_tree)
+    }
+    else {
+        HashMap::new()
+    };
+
+    let unstaged_files = check_unstaged_changes(repo, staging_area, gitignore, &head_dict);
     let untracked_files = collect_untracked_files(&repo.worktree, &repo.worktree, staging_area, gitignore);
 
     let has_unstaged_changes = !unstaged_files.is_empty();
@@ -163,14 +174,27 @@ fn index_worktree_status(repo: &Repository, staging_area: &StagingArea, gitignor
     Ok((has_unstaged_changes, has_untracked_files))
 }
 
-fn check_unstaged_changes(repo: &Repository, staging_area: &StagingArea, gitignore: &RGitIgnore) -> Vec<(PathBuf, &'static str)>
+fn check_unstaged_changes(
+    repo: &Repository,
+    staging_area: &StagingArea,
+    gitignore: &RGitIgnore,
+    head_dict: &HashMap<String, String>
+) -> Vec<(PathBuf, &'static str)>
 {
     staging_area
         .entries
         .iter()
         .filter_map(|entry|
         {
-            if gitignore.check_ignore(&entry.path)
+            let path_str = entry.path.to_string_lossy();
+            let is_ignored = gitignore.check_ignore(&entry.path);
+            let was_in_head = head_dict.contains_key(path_str.as_ref());
+
+            if is_ignored && was_in_head
+            {
+                return Some((entry.path.clone(), "removido"));
+            }
+            if is_ignored
             {
                 return None;
             }
