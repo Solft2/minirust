@@ -25,7 +25,7 @@ fn cmd_status_result() -> Result<(), String>
     let repo = find_current_repo().ok_or("Não está dentro de um repositório")?;
     let staging_area = StagingArea::new(&repo);
 
-    cmd_status_branch(&repo);
+    show_status_branch(&repo);
     let has_staged_changes = compare_head_and_index(&repo, &staging_area)?;
     let (has_unstaged_changes, has_untracked_files) = index_worktree_status(&repo, &staging_area)?;
 
@@ -45,21 +45,21 @@ fn cmd_status_result() -> Result<(), String>
     Ok(())
 }
 
-fn cmd_status_branch(repo: &Repository)
+// Exibe a branch atual ou o hash do HEAD destacado
+fn show_status_branch(repo: &Repository)
 {
     if repo.head_detached()
     {
         let head_hash = repo.resolve_head();
         println!("HEAD destacado em {}\n", &head_hash[..7]);
+        return
     }
-    else
-    {
-        let head_ref = repo.get_head();
-        let branch_name = head_ref
-            .strip_prefix("ref: refs/heads/")
-            .unwrap_or(&head_ref);
-        println!("Na branch {}\n", branch_name);
-    }
+    let head_ref = repo.get_head();
+    let branch_name = head_ref
+        .strip_prefix("refs/heads/")
+        .unwrap_or(&head_ref);
+    
+    println!("Na branch {}\n", branch_name);
 }
 
 /// Compara HEAD com o índice (staging area)
@@ -256,55 +256,56 @@ fn collect_untracked_files(
 ) -> Vec<PathBuf>
 {
     let mut untracked = Vec::new();
-    collect_untracked_files_recursive(current_dir, worktree, staging_area, &mut untracked);
-    untracked
-}
 
-fn collect_untracked_files_recursive(
-    current_dir: &Path,
-    worktree: &Path,
-    staging_area: &StagingArea,
-    untracked: &mut Vec<PathBuf>,
-)
-{
-    if !current_dir.is_dir()
+    fn collect_recursive(
+        current_dir: &Path,
+        worktree: &Path,
+        staging_area: &StagingArea,
+        untracked: &mut Vec<PathBuf>,
+    )
     {
-        return;
-    }
-    if current_dir
-        .file_name()
-        .is_some_and(|name| name == Repository::MINIGITDIR)
-    {
-        return;
-    }
-
-    let Ok(entries) = std::fs::read_dir(current_dir) else
-    {
-        return;
-    };
-
-    for entry in entries.flatten()
-    {
-        let path = entry.path();
-
-        if path.is_dir()
+        if !current_dir.is_dir()
         {
-            collect_untracked_files_recursive(&path, worktree, staging_area, untracked);
+            return;
         }
-        else if path.is_file()
+        if current_dir
+            .file_name()
+            .is_some_and(|name| name == Repository::MINIGITDIR)
         {
-            if let Ok(relative_path) = path.strip_prefix(worktree)
-            {
-                let is_tracked = staging_area
-                    .entries
-                    .iter()
-                    .any(|e| e.path == relative_path);
+            return;
+        }
 
-                if !is_tracked
+        let Ok(entries) = std::fs::read_dir(current_dir) else
+        {
+            return;
+        };
+
+        for entry in entries.flatten()
+        {
+            let path = entry.path();
+
+            if path.is_dir()
+            {
+                collect_recursive(&path, worktree, staging_area, untracked);
+            }
+            else if path.is_file()
+            {
+                if let Ok(relative_path) = path.strip_prefix(worktree)
                 {
-                    untracked.push(relative_path.to_path_buf());
+                    let is_tracked = staging_area
+                        .entries
+                        .iter()
+                        .any(|e| e.path == relative_path);
+
+                    if !is_tracked
+                    {
+                        untracked.push(relative_path.to_path_buf());
+                    }
                 }
             }
         }
     }
+
+    collect_recursive(current_dir, worktree, staging_area, &mut untracked);
+    untracked
 }
