@@ -5,17 +5,12 @@ use std::{
 };
 
 use crate::{
-    Repository,
-    commands::{checkout, rebase::create_conflict_blob},
-    merge::{abort_merge, finish_merge, merge_or_rebase_in_progress, start_merge},
-    objects::{
-        CommitObject, RGitObject, RGitObjectTypes, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files
-    },
-    staging::StagingTree,
-    utils::find_current_repo,
+    Repository, commands::{checkout, rebase::create_conflict_blob}, merge::{abort_merge, finish_merge, merge_or_rebase_in_progress, start_merge}, objects::{
+        CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files
+    }, staging::StagingTree, status::non_staged_files, utils::find_current_repo
 };
 
-pub fn cmd_merge(branch_name: &String, abort: bool) {
+pub fn cmd_merge(branch_name: Option<&String>, abort: bool, continue_: bool) {
     let mut repo = match find_current_repo() {
         Some(r) => r,
         None => {
@@ -29,12 +24,56 @@ pub fn cmd_merge(branch_name: &String, abort: bool) {
         return;
     }
 
-    match execute_merge(&mut repo, branch_name) {
-        Ok(_) => {}
-        Err(err) => {
-            println!("{}", err);
+    if continue_ {
+        match continue_merge(&mut repo) {
+            Ok(_) => println!("Merge continuado e finalizado com sucesso."),
+            Err(e) => println!("Erro ao continuar merge: {}", e),
+        }
+        return;
+    }
+
+    if let Some(name) = branch_name {
+        match execute_merge(&mut repo, name) {
+            Ok(_) => {}
+            Err(err) => {
+                println!("{}", err);
+            }
         }
     }
+}
+
+fn continue_merge(repo: &mut Repository) -> Result<(), String> {
+    if !merge_or_rebase_in_progress(repo) {
+        return Err("Não há merge em andamento para continuar.".to_string());
+    }
+
+    let unstaged = non_staged_files(repo);
+    if !unstaged.is_empty() {
+        return Err(format!(
+            "Você ainda tem mudanças não adicionadas (unstaged). \nResolva os conflitos nos arquivos e rode 'minigit add <arquivos>' antes de continuar.\nArquivos pendentes: {:?}", 
+            unstaged
+        ));
+    }
+
+    if !repo.merge_head_path.exists() {
+        return Err("Arquivo de controle MERGE_HEAD não encontrado. Estado inconsistente.".to_string());
+    }
+
+    let target_hash = std::fs::read_to_string(&repo.merge_head_path)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    
+    let message = format!("Merge commit (resolving conflicts from branch hash {})", &target_hash[0..7]);
+
+    let commit_hash = create_commit_object_from_index(repo, message);
+    
+    repo.update_curr_branch(&commit_hash);
+
+    finish_merge(repo);
+
+    println!("Merge commit criado: {}", commit_hash);
+    Ok(())
 }
 
 fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), String> {
