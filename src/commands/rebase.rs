@@ -1,10 +1,10 @@
 use core::panic;
 use std::{collections::{HashMap, HashSet}, path::PathBuf, str::FromStr};
 
-use crate::{Repository, merge::{finish_merge, merge_state, start_merge}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files}, staging::StagingTree, status::non_staged_files, utils::find_current_repo};
+use crate::{Repository, checks::{ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_non_staged_files, ensure_no_rebase_in_progress, ensure_rebase_in_progress}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files}, staging::StagingTree, utils::{find_current_repo, merge_rebase}};
 
-pub fn cmd_rebase(continue_: bool, new_base_reference: Option<String>) {
-    match cmd_rebase_result(continue_, new_base_reference) {
+pub fn cmd_rebase(continue_: bool, abort: bool, new_base_reference: Option<String>) {
+    match cmd_rebase_result(continue_, abort, new_base_reference) {
         Ok(_) => {},
         Err(err) => {
             println!("{}", err);
@@ -12,40 +12,54 @@ pub fn cmd_rebase(continue_: bool, new_base_reference: Option<String>) {
     }
 }
 
-fn cmd_rebase_result(continue_: bool, new_base_reference: Option<String>) -> Result<(), String> {
+fn cmd_rebase_result(continue_: bool, abort: bool, new_base_reference: Option<String>) -> Result<(), String> {
     let mut repo = find_current_repo()
         .ok_or("Diretório não está dentro um repositório minigit")?;
 
-    if repo.head_detached() {
-        return Err("Não é possível fazer rebase com HEAD destacado.".to_string());
-    }
-
     if continue_ {
         continue_rebase(&mut repo)?;
-    } else if let Some(branch) = new_base_reference.clone() {
-        let exists = repo.reference_exists(&branch);
-
-        if !exists {
-            return Err("A referência fornecida não existe.".to_string());
-        }
-
-        start_merge(&mut repo);
-        start_rebase(branch, &mut repo)?;
+    } else if abort {
+        abort_rebase(&mut repo)?;
+    } else if let Some(new_base_reference) = new_base_reference.clone() {
+        initialize_rebase_command(&mut repo, new_base_reference)?;
     } else {
         return Err("Você deve fornecer nova base de branch para rebase.".to_string());
     }
 
-    finish_merge(&mut repo);
+    merge_rebase::finish(&mut repo, true);
+    Ok(())
+}
+
+fn abort_rebase(repo: &mut Repository) -> Result<(), String> {
+    ensure_rebase_in_progress(repo)?;
+    merge_rebase::abort(repo, true);
+    
+    Ok(())
+}
+
+/// Inicia o processo de rebase no repositório atual
+fn initialize_rebase_command(repo: &mut Repository, new_base_reference: String) -> Result<(), String> {
+    ensure_no_non_staged_files(repo)?;
+    ensure_no_detached_head(repo)?;
+    ensure_no_merge_in_progress(repo)?;
+    ensure_no_rebase_in_progress(repo)?;
+
+    let exists = repo.reference_exists(&new_base_reference);
+    if !exists {
+        return Err("A referência fornecida não existe.".to_string());
+    }
+
+    merge_rebase::start(repo, true);
+    start_rebase(new_base_reference, repo)?;
+
     Ok(())
 }
 
 fn continue_rebase(repo: &mut Repository) -> Result<(), String> {
-    println!("{:?}", non_staged_files(repo));
-    if !non_staged_files(repo).is_empty() {
-        return Err("Existem arquivos não adicionados no repositório.\nAdicione-os com minigit add ou descarte essas mudanças antes de continuar o rebase.".to_string());
-    }
+    ensure_no_non_staged_files(repo)?;
+    ensure_rebase_in_progress(repo)?;
 
-    let commits_to_apply = merge_state(repo).iter()
+    let commits_to_apply = merge_rebase::get_state(repo, true).iter()
         .map(|hash| {
             let RGitObjectTypes::Commit(commit) = repo.get_object(hash).unwrap() else {
                 panic!("Objeto referenciado por merge_head não é um commit");
@@ -60,7 +74,6 @@ fn continue_rebase(repo: &mut Repository) -> Result<(), String> {
     repo.update_curr_branch(&commit_hash);
 
     apply_commits(repo, commits_to_apply[1..].to_vec(), repo.get_head())?;
-
     Ok(())
 }
 
@@ -163,13 +176,13 @@ fn create_rebase_commit(
 }
 
 fn interrupt_rebase(repo: &mut Repository, not_applied_commits: Vec<CommitObject>) {
-    let mut merge_head_content = String::new();
+    let mut rebase_head_content = String::new();
     for commit in not_applied_commits {
-        merge_head_content.push_str(&commit.hash());
-        merge_head_content.push('\n');
+        rebase_head_content.push_str(&commit.hash());
+        rebase_head_content.push('\n');
     }
 
-    std::fs::write(&repo.merge_head_path, merge_head_content).unwrap();
+    std::fs::write(&repo.rebase_head_path, rebase_head_content).unwrap();
 }
 
 /// Retorna o commit base comum entre os dois históricos, se existir

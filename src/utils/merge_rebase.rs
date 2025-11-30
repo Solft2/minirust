@@ -34,7 +34,7 @@ pub fn abort(repo: &mut Repository, is_rebase: bool) {
 
     finish(repo, is_rebase);
 
-    println!("Merge/Rebase abortado com sucesso.");
+    println!("{} abortado com sucesso.", if is_rebase { "Rebase" } else { "Merge" });
 }
 
 /// Inicia um merge ou rebase, criando os arquivos de controle necessários

@@ -41,8 +41,12 @@ pub enum Commands {
         branch_name: String
     },
     Rebase {
-        #[arg(long, conflicts_with = "new_base_branch")]
+        #[arg(long, conflicts_with_all(["abort", "new_base_branch"]))]
         continue_: bool,
+
+        #[arg(long, conflicts_with_all(["continue_", "new_base_branch"]))]
+        abort: bool,
+
         new_base_branch: Option<String>
     },
     Add {
@@ -83,7 +87,7 @@ pub fn cli_main() {
         Log => log::cmd_log(),
         Branch { branch_name, delete } => branch::cmd_branch(branch_name, delete),
         Merge {branch_name} => merge::cmd_merge(&branch_name),
-        Rebase { continue_, new_base_branch } => {rebase::cmd_rebase(continue_, new_base_branch)},
+        Rebase { continue_, abort, new_base_branch } => {rebase::cmd_rebase(continue_, abort, new_base_branch)},
         Add { files } => add::cmd_add(files),
         Checkout { commit_id } => checkout::cmd_checkout(&commit_id),
         Commit { message } => commit::cmd_commit(message),
