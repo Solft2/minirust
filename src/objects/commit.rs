@@ -7,7 +7,7 @@ pub struct CommitObject {
     pub tree: String,
     pub author: String,
     pub message: String,
-    pub timestamp: u64,
+    pub timestamp: u128,
     pub parent: Vec<String>
 }
 
@@ -20,7 +20,7 @@ impl CommitObject {
         let (_, message, remainder) = files::read_value(remainder);
         let (_, timestamp_str, mut remainder) = files::read_value(remainder);
 
-        let timestamp: u64 = timestamp_str.parse().expect("Timestamp deve ser um número válido");
+        let timestamp: u128 = timestamp_str.parse().expect("Timestamp deve ser um número válido");
         let mut parent: Vec<String> = Vec::new();
 
         while !remainder.is_empty() {

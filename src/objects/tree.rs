@@ -117,7 +117,6 @@ pub fn create_tree_object_from_staging_tree(staging_tree: &StagingTree, repo: &m
 
     match staging_tree {
         StagingTree::Blob(blob_id) => {
-            println!("Encontrado blob com id {}", blob_id);
             return blob_id.clone();
         },
         StagingTree::Fork(children) => {

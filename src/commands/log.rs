@@ -22,7 +22,7 @@ fn cmd_log_result() -> Result<(), String> {
     }
 
     for commit in commits {
-        let dt: DateTime<Local> = Local.timestamp_opt(commit.timestamp as i64, 0).unwrap();
+        let dt: DateTime<Local> = Local.timestamp_opt((commit.timestamp / 1_000_000_000) as i64, 0).unwrap();
         let formatted_date = dt.format("%d/%m/%Y %H:%M:%S").to_string();
 
         output.push_str(&format!("commit {}\n", commit.hash()));

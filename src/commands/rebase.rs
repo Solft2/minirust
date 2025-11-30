@@ -1,7 +1,10 @@
-use crate::utils::{find_current_repo, reference_exists};
+use core::panic;
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
-pub fn cmd_rebase(continue_: bool, new_base_branch: Option<String>) {
-    match cmd_rebase_result(continue_, new_base_branch) {
+use crate::{Repository, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, create_tree_object_from_staging_tree, get_commit_tree_as_map, instanciate_tree_files}, staging::StagingTree, utils::find_current_repo};
+
+pub fn cmd_rebase(continue_: bool, new_base_reference: Option<String>) {
+    match cmd_rebase_result(continue_, new_base_reference) {
         Ok(_) => {},
         Err(err) => {
             println!("{}", err);
@@ -9,20 +12,24 @@ pub fn cmd_rebase(continue_: bool, new_base_branch: Option<String>) {
     }
 }
 
-fn cmd_rebase_result(continue_: bool, new_base_branch: Option<String>) -> Result<(), String> {
-    let repo = find_current_repo()
+fn cmd_rebase_result(continue_: bool, new_base_reference: Option<String>) -> Result<(), String> {
+    let mut repo = find_current_repo()
         .ok_or("Diretório não está dentro um repositório minigit")?;
+
+    if repo.head_detached() {
+        return Err("Não é possível fazer rebase com HEAD destacado.".to_string());
+    }
 
     if continue_ {
         continue_rebase()?;
-    } else if let Some(branch) = new_base_branch {
-        let exists = reference_exists(&branch, &repo);
+    } else if let Some(branch) = new_base_reference {
+        let exists = repo.reference_exists(&branch);
 
         if !exists {
             return Err("A referência fornecida não existe.".to_string());
         }
 
-        start_rebase(branch)?;
+        start_rebase(branch, &mut repo)?;
     } else {
         return Err("Você deve fornecer nova base de branch para rebase.".to_string());
     }
@@ -36,8 +43,180 @@ fn continue_rebase() -> Result<(), String> {
     Ok(())
 }
 
-fn start_rebase(new_base_branch: String) -> Result<(), String> {
-    // Lógica para iniciar o rebase
-    println!("Iniciando rebase na nova base de branch: {}", new_base_branch);
+fn start_rebase(new_base_reference: String, repo: &mut Repository) -> Result<(), String> {
+    let current_branch_ref_path = repo.get_head();
+    let current_branch_head = repo.resolve_head();
+    let new_base_head = repo.resolve_reference(&new_base_reference);
+
+    let curr_branch_history = repo.get_commit_history_from_commit(&current_branch_head);
+    let new_base_history = repo.get_commit_history_from_commit(&new_base_head);
+    let base_commit = base_commit(&curr_branch_history, &new_base_history);
+
+    let commits_to_apply: Vec<CommitObject> = if new_base_head.is_empty() {
+        curr_branch_history
+    } else if current_branch_head.is_empty() {
+        Vec::new()
+    } else {
+        commits_to_apply(curr_branch_history, &base_commit)
+    };
+
+    if commits_to_apply.is_empty() {
+        println!("Nada a aplicar, os históricos já estão alinhados.");
+        return Ok(());
+    }
+
+    repo.update_branch_ref(&current_branch_ref_path, &new_base_head);
+
+    for commit in commits_to_apply {
+        let current_base_head = repo.resolve_head();
+        let RGitObjectTypes::Commit(current_base_head_commit) = repo
+            .get_object(&current_base_head)
+            .unwrap() else {
+                panic!("Objeto referenciado por current_base_head não é um commit");
+            };
+
+        let (merge_tree_id, conflicts) = create_merge_tree(repo, &commit, &current_base_head_commit);
+        
+        if conflicts.is_empty() {
+            let commit_id = create_rebase_commit(repo, &commit, current_base_head.clone(), merge_tree_id);
+            repo.update_branch_ref(&current_branch_ref_path, &commit_id);
+        } else {
+            interrupt_rebase();
+            let conflict_messages = conflicts.join("\n");
+            return Err(format!("Conflitos encontrados durante o rebase nos arquivos:\n{}", conflict_messages));
+        }
+    }
+
+    let current_base_head = repo.resolve_head();
+    let RGitObjectTypes::Commit(current_base_head_commit) = repo
+        .get_object(&current_base_head)
+        .unwrap() else {
+            panic!("Objeto referenciado por current_base_head não é um commit");
+        };
+    let RGitObjectTypes::Tree(current_base_head_commit_tree) = repo
+        .get_object(&current_base_head_commit.tree)
+        .unwrap() else {
+            panic!("Objeto referenciado por current_base_head_commit.tree não é uma tree");
+        };
+
+    instanciate_tree_files(repo, &current_base_head_commit_tree);
+    println!("Rebase concluído. HEAD atual: {}", current_base_head);
     Ok(())
+}
+
+fn create_rebase_commit(
+    repo: &mut Repository, 
+    original_commit: &CommitObject,
+    current_branch_head: String,
+    merge_tree_id: String, 
+) -> String {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+
+    let rebase_commit = CommitObject {
+        tree: merge_tree_id,
+        message: original_commit.message.clone(),
+        author: original_commit.author.clone(),
+        timestamp: now,
+        parent: vec![current_branch_head],
+    };
+
+    repo.create_object(&rebase_commit)
+}
+fn interrupt_rebase() {
+    println!("Rebase interrompido devido a conflitos. Resolva os conflitos e use 'rebase --continue' para continuar.");
+}
+
+/// Retorna o commit base comum entre os dois históricos, se existir
+fn base_commit(history_a: &Vec<CommitObject>, history_b: &Vec<CommitObject>) -> Option<CommitObject> {
+    for commit_a in history_a {
+        for commit_b in history_b {
+            if commit_a.hash() == commit_b.hash() {
+                return Some(commit_a.clone());
+            }
+        }
+    }
+
+    None
+}
+
+/// Retorna os commits que precisam ser aplicados na nova base.
+/// Eles estão ordenados do mais antigo para o mais recente.
+fn commits_to_apply(curr_branch_history: Vec<CommitObject>, base_commit: &Option<CommitObject>) -> Vec<CommitObject> {
+    match base_commit {
+        None => return curr_branch_history,
+        Some(base_commit) => {
+            let mut commits = Vec::new();
+            for commit in curr_branch_history {
+                if commit.hash() == base_commit.hash() {
+                    break;
+                }
+                commits.push(commit);
+            }
+            commits.reverse();
+            commits
+        },
+    }
+}
+
+/// Cria uma tree no repositório representando o merge commit_a e commit_b.
+/// Retorna o hash da nova tree criada caso não haja conflitos e a lista dos arquivos que deram conflito.
+/// Esta função deve entrar em pânico se ocorrer um erro inesperado.
+fn create_merge_tree(repo: &mut Repository, commit_a: &CommitObject, commit_b: &CommitObject) -> (String, Vec<String>){
+    let commit_a_tree: HashMap<String, String> = get_commit_tree_as_map(repo, commit_a);
+    let commit_b_tree: HashMap<String, String> = get_commit_tree_as_map(repo, commit_b);
+    let mut merge_commit_tree: HashMap<String, String> = commit_b_tree.clone();
+    let mut conflicts: Vec<String> = Vec::new();
+
+    for (file_path, hash_a) in &commit_a_tree {
+        if let Some(hash_b) = commit_b_tree.get(file_path) {
+            if hash_a != hash_b {
+                conflicts.push(file_path.clone());
+            }
+        } else {
+            merge_commit_tree.insert(file_path.clone(), hash_a.clone());
+        }
+    }
+    
+    let mut merge_staging_tree = StagingTree::Fork(HashMap::new());
+    for (file_path, hash_obj) in &merge_commit_tree {
+        merge_staging_tree.insert(hash_obj.clone(), PathBuf::from_str(&file_path).unwrap());
+    }
+    
+    if !conflicts.is_empty() {
+        for conflicted_file_path in &conflicts {
+            let commit_a_blob = repo.get_object(&commit_a_tree[conflicted_file_path]).unwrap();
+            let commit_b_blob = repo.get_object(&commit_b_tree[conflicted_file_path]).unwrap();
+
+            let commit_a_blob = match commit_a_blob {
+                RGitObjectTypes::Blob(blob) => blob.content,
+                _ => panic!("Objeto esperado é um blob"),
+            };
+
+            let commit_b_blob = match commit_b_blob {
+                RGitObjectTypes::Blob(blob) => blob.content,
+                _ => panic!("Objeto esperado é um blob"),
+            };
+
+            let blob_id = create_conflict_blob(repo, commit_a_blob, commit_b_blob);
+            merge_staging_tree.insert(blob_id, PathBuf::from_str(conflicted_file_path).unwrap());
+        }
+    }
+
+    let merge_tree_id = create_tree_object_from_staging_tree(&merge_staging_tree, repo);
+    (merge_tree_id, conflicts)
+}
+
+fn create_conflict_blob(repo: &mut Repository, content_a: Vec<u8>, content_b: Vec<u8>) -> String {
+    let mut conflict_content: Vec<u8> = Vec::new();
+    conflict_content.extend_from_slice(b"<<<<<<< HEAD\n");
+    conflict_content.extend_from_slice(&content_a);
+    conflict_content.extend_from_slice(b"\n=======\n");
+    conflict_content.extend_from_slice(&content_b);
+    conflict_content.extend_from_slice(b"\n>>>>>>>\n");
+
+    let blob = BlobObject {
+        content: conflict_content,
+    };
+
+    repo.create_object(&blob)
 }

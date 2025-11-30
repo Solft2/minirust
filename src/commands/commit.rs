@@ -35,7 +35,7 @@ fn cmd_commit_result(message: String) -> Result<String, String> {
     } else {
         vec![head.clone()]
     };
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
 
     let commit = CommitObject {
         tree: tree_id,

@@ -146,7 +146,7 @@ impl Repository {
 
     /// Atualiza a referência de branch especificada para apontar para o novo commit
     /// Entra em pânico se a referência não existir ou não estiver no formato '/refs/heads/...'
-    fn update_branch_ref(&mut self, branch_ref: &String, commit_id: &String) {
+    pub fn update_branch_ref(&mut self, branch_ref: &String, commit_id: &String) {
         let branch_head = refs::resolve_ref_path(branch_ref, self);
 
         if branch_head.is_none() {
