@@ -1,4 +1,4 @@
-use crate::{Repository, commands::checkout, objects::RGitObjectTypes, utils::find_current_repo};
+use crate::{Repository, checks::{ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_rebase_in_progress, ensure_no_uncommited_changes}, commands::checkout, objects::RGitObjectTypes, utils::find_current_repo};
 
 pub fn cmd_merge(branch_name: &String) {
     match execute_merge(branch_name) {
@@ -12,7 +12,11 @@ pub fn cmd_merge(branch_name: &String) {
 fn execute_merge(branch_name: &String) -> Result<(), String> {
     let mut repo = find_current_repo().ok_or("Diretório não está dentro um repositório minigit")?;
 
-    // 
+    ensure_no_detached_head(&repo)?;
+    ensure_no_merge_in_progress(&repo)?;
+    ensure_no_rebase_in_progress(&repo)?;
+    ensure_no_uncommited_changes(&repo)?;
+
     let current_head_hash = repo.resolve_head();
     if current_head_hash.is_empty() {
         return Err("Nada para fazer merge, repositório vazio.".to_string());

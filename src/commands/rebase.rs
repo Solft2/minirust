@@ -1,7 +1,7 @@
 use core::panic;
 use std::{collections::{HashMap, HashSet}, path::PathBuf, str::FromStr};
 
-use crate::{Repository, checks::{ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_non_staged_files, ensure_no_rebase_in_progress, ensure_rebase_in_progress}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files}, staging::StagingTree, utils::{find_current_repo, merge_rebase}};
+use crate::{Repository, checks::{ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_non_staged_files, ensure_no_rebase_in_progress, ensure_no_uncommited_changes, ensure_rebase_in_progress}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files}, staging::StagingTree, utils::{find_current_repo, merge_rebase}};
 
 pub fn cmd_rebase(continue_: bool, abort: bool, new_base_reference: Option<String>) {
     match cmd_rebase_result(continue_, abort, new_base_reference) {
@@ -39,7 +39,7 @@ fn abort_rebase(repo: &mut Repository) -> Result<(), String> {
 
 /// Inicia o processo de rebase no repositório atual
 fn initialize_rebase_command(repo: &mut Repository, new_base_reference: String) -> Result<(), String> {
-    ensure_no_non_staged_files(repo)?;
+    ensure_no_uncommited_changes(repo)?;
     ensure_no_detached_head(repo)?;
     ensure_no_merge_in_progress(repo)?;
     ensure_no_rebase_in_progress(repo)?;

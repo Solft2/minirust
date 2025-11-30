@@ -1,6 +1,6 @@
 use std::{path::PathBuf};
 
-use crate::utils::find_current_repo;
+use crate::{checks::ensure_no_detached_head, utils::find_current_repo};
 
 /// Adiciona um arquivo na área de staging
 pub fn cmd_add(files: Vec<String>) {
@@ -16,6 +16,8 @@ fn cmd_add_result(files: Vec<String>) -> Result<(), String> {
     let curent_dir = std::env::current_dir().map_err(|e| e.to_string())?;
 
     let mut repo = find_current_repo().ok_or("Não é um repositório minigit")?;
+
+    ensure_no_detached_head(&repo)?;
 
     let paths = files.into_iter().map(|f| {
         let blob_path = PathBuf::from(&f);
