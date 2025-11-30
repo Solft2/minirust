@@ -12,6 +12,7 @@ pub mod ls_tree;
 pub mod config;
 pub mod clone;
 pub mod reset;
+pub mod status;
 
 use clap::{Parser, Subcommand};
 
@@ -61,8 +62,9 @@ pub enum Commands {
     CatFile{hash: String},
     WriteTree,
     Reset {
-    files: Vec<String>
-},
+        files: Vec<String>
+    },
+    Status,
 }
 
 pub fn cli_main() {
@@ -84,5 +86,6 @@ pub fn cli_main() {
         CatFile { hash } => cat_file::cmd_cat_file(&hash),
         WriteTree => tree_rust::cmd_write_tree(),
         Reset { files } => reset::cmd_reset(files),
+        Status => status::cmd_status(),
     }
 }
