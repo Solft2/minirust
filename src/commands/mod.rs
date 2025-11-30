@@ -38,7 +38,9 @@ pub enum Commands {
         branch_name: String
     },
     Merge {
-        branch_name: String
+        branch_name: Option<String>,
+        #[arg(long)]
+        abort: bool
     },
     Rebase {
         #[arg(long, conflicts_with = "new_base_branch")]
@@ -82,7 +84,14 @@ pub fn cli_main() {
         Clone { repository_path, destination_path } => clone::cmd_clone(&repository_path, &destination_path),
         Log => log::cmd_log(),
         Branch { branch_name, delete } => branch::cmd_branch(branch_name, delete),
-        Merge {branch_name} => merge::cmd_merge(&branch_name),
+        Merge {branch_name, abort } => {
+            if !abort && branch_name.is_none() {
+                println!("Erro: Forneça o nome da branch ou use --abort");
+                return;
+            }
+            let name = branch_name.unwrap_or_default(); 
+            merge::cmd_merge(&name, abort);
+        },
         Rebase { continue_, new_base_branch } => {rebase::cmd_rebase(continue_, new_base_branch)},
         Add { files } => add::cmd_add(files),
         Checkout { commit_id } => checkout::cmd_checkout(&commit_id),

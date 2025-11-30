@@ -1,7 +1,7 @@
 use core::panic;
 use std::fs;
 
-use crate::Repository;
+use crate::{Repository, commands::checkout::instanciate_commit};
 
 /// Verifica se há um merge ou rebase em progresso no repositório
 pub fn merge_or_rebase_in_progress(repo: &Repository) -> bool {
@@ -18,8 +18,19 @@ pub fn abort_merge(repo: &mut Repository) {
         panic!("Não há um merge ou rebase em progresso para abortar.");
     }
 
-    let original_commit = fs::read_to_string(&repo.orig_head_path).unwrap();
-    repo.update_branch_ref(&repo.get_head(), &original_commit);
+    let original_commit_hash = fs::read_to_string(&repo.orig_head_path)
+        .expect("Arquivo ORIG_HEAD deveria existir")
+        .trim()
+        .to_string();
+
+    repo.update_curr_branch(&original_commit_hash);
+
+    repo.clear_worktree();
+
+    let original_commit_obj = repo.get_object(&original_commit_hash)
+        .expect("Commit original sumiu da pasta .minigit");
+
+    instanciate_commit(original_commit_obj, repo);
 
     finish_merge(repo);
 
