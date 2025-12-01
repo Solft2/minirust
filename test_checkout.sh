@@ -1,22 +1,25 @@
+#!/bin/bash
+MINIGIT="$(pwd)/target/release/minigit"
+
 rm -rf test
 mkdir test
 
 cd test
 
-minigit init
+"$MINIGIT" init
 echo "nothing" >> .gitignore
-minigit add .gitignore
-minigit commit "Initial commit"
+"$MINIGIT" add .gitignore
+"$MINIGIT" commit "Initial commit"
 
 echo "Creating branch 'develop' and switching to it..."
-minigit branch develop
-minigit checkout develop
+"$MINIGIT" branch develop
+"$MINIGIT" checkout develop
 
 echo "Add uncommited changes to working directory..."
 echo "Some uncommited changes" >> uncommited.txt
 
 echo "Switching back to master branch..."
-minigit checkout master
+"$MINIGIT" checkout master
 
 cd ..
 
