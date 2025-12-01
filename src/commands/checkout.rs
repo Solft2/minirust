@@ -1,4 +1,4 @@
-use crate::{Repository, checks::{ensure_no_merge_in_progress, ensure_no_rebase_in_progress}, objects::{CommitObject, RGitObjectTypes, tree}, staging::{self, StagingEntry}, status::get_uncommited_files, utils::{find_current_repo, is_valid_sha1, resolve_head_or_branch_name}};
+use crate::{Repository, checks::{ensure_no_merge_in_progress, ensure_no_rebase_in_progress}, objects::{CommitObject, RGitObjectTypes, tree}, staging::{self}, status::get_uncommited_files, utils::{find_current_repo, is_valid_sha1, resolve_head_or_branch_name}};
 
 pub fn cmd_checkout(reference_to_commit: &String) {
     match execute_checkout(reference_to_commit) {
@@ -85,40 +85,15 @@ fn prompt_uncommited_changes(repo: &Repository) -> Result<(), String> {
 /// 
 /// Essa função deve dar pânico se algum erro ocorrer, pois isso indica que o repositório está corrompido.
 pub fn instanciate_commit(object: CommitObject, repository: &mut Repository) {
-    let final_tree_object = {
-        // Assumimos apenas uma tree
-        let tree = object.tree;
+    let new_staging_area = staging::staging_area_from_commit(repository, &object);
+    let commit_tree_hash = &object.tree;
 
-        let tree_object = repository.get_object(&tree).expect("Objeto da tree não foi encontrado (estado corrompido)");
+    let RGitObjectTypes::Tree(tree_object) = repository
+        .get_object(commit_tree_hash)
+        .unwrap()
+        else { panic!("Commit aponta para árvore inválida"); };
 
-        match tree_object {
-            RGitObjectTypes::Tree(tree_object) => {
-                tree::instanciate_tree_files(repository, &tree_object);
-                tree_object
-            }
-            _ => {
-                panic!("Tree do commit não é uma arvore.");
-            }
-        }
-    };
-
-    let tree_files = tree::get_tree_as_map(repository, &final_tree_object);
-    let relative_file_paths: Vec<String> = tree_files.keys().cloned().collect();
-
-    let new_staging_area = staging::StagingArea {
-        entries: relative_file_paths.iter().map(|path| {
-            let full_path = repository.worktree.join(path);
-            let object_hash = tree_files.get(path).unwrap().clone();
-            let relative_path = full_path.strip_prefix(&repository.worktree).unwrap();
-
-            StagingEntry {
-                last_content_change: object.timestamp,
-                mode_type: 0o100644, // arquivo normal
-                object_hash: object_hash.to_string(),
-                path: relative_path.to_path_buf(),
-            }
-        }).collect()
-    };
+    tree::instanciate_tree_files(repository, &tree_object);
 
     staging::rewrite_index(repository, &new_staging_area);
 }
