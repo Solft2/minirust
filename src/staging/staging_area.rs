@@ -6,32 +6,18 @@ use std::str::FromStr;
 use std::{path::PathBuf};
 
 use crate::Repository;
+use crate::objects::{CommitObject, RGitObjectTypes, tree};
 
 /// Uma entrada da staging area
 #[derive(Debug, Clone)]
 pub struct StagingEntry {
-    pub last_content_change: u64, //seconds
+    pub last_content_change: u128, //in nanos
     pub mode_type: u32,
     pub object_hash: String,
     pub path: PathBuf, // caminho relativo ao worktree
 }
 
-impl From<(&PathBuf, &String, &PathBuf)> for StagingEntry {
-    fn from((absolute_path, object_hash, workdir): (&PathBuf, &String, &PathBuf)) -> Self {
-        let metadata = absolute_path.metadata().unwrap();
-        let modified_time = metadata.modified().unwrap();
-        let duration_since_epoch = modified_time.duration_since(std::time::UNIX_EPOCH).unwrap();
-        let seconds = duration_since_epoch.as_secs();
-        let relative_path = absolute_path.strip_prefix(workdir).unwrap();
 
-        StagingEntry {
-            last_content_change: seconds,
-            mode_type: 0o100644, // arquivo normal
-            object_hash: object_hash.to_string(),
-            path: relative_path.to_path_buf(),
-        }
-    }
-}
 
 impl StagingEntry {
     /// Converte a entrada de staging em um array de bytes para ser escrito no arquivo de índice
@@ -56,7 +42,7 @@ impl StagingEntry {
         let parts: Vec<&str> = s.split(' ').collect();
 
         StagingEntry { 
-            last_content_change: parse_to::<u64>(parts[0]), 
+            last_content_change: parse_to::<u128>(parts[0]), 
             mode_type: parse_to::<u32>(parts[1]), 
             object_hash: parts[2].to_string(), 
             path: PathBuf::from(parts[3])
@@ -137,4 +123,30 @@ fn parse_to<T: FromStr>(s: &str) -> T
         <T as FromStr>::Err: Debug
 {
     str::parse::<T>(s).expect("Deveria ser possível o parsing")
+}
+
+pub fn staging_area_from_commit(repository: &Repository, commit: &CommitObject) -> StagingArea {
+    let tree_hash = &commit.tree;
+    let RGitObjectTypes::Tree(tree_object) = repository
+        .get_object(tree_hash)
+        .unwrap()
+        else { panic!("Commit aponta para árvore inválida"); };
+
+    let tree_files = tree::get_tree_as_map(repository, &tree_object);
+    let relative_file_paths: Vec<String> = tree_files.keys().cloned().collect();
+
+    StagingArea {
+        entries: relative_file_paths.iter().map(|path| {
+            let full_path = repository.worktree.join(path);
+            let object_hash = tree_files.get(path).unwrap().clone();
+            let relative_path = full_path.strip_prefix(&repository.worktree).unwrap();
+
+            StagingEntry {
+                last_content_change: commit.timestamp,
+                mode_type: 0o100644, // arquivo normal
+                object_hash: object_hash.to_string(),
+                path: relative_path.to_path_buf(),
+            }
+        }).collect()
+    }
 }

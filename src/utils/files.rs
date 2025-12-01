@@ -9,6 +9,10 @@ pub fn create_dir(path: &PathBuf) {
     fs::create_dir(path).expect("Deveria criar o diretório");
 }
 
+pub fn get_current_dir() -> PathBuf {
+    std::env::current_dir().expect("Deveria obter o diretório atual")
+}
+
 /// Lê um valor do conteúdo de um arquivo no formato `<chave> <valor>`, retornando o valor lido e o restante do conteúdo
 /// 
 /// Retorna a chave, o valor e o restante do conteúdo.

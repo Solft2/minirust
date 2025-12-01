@@ -1,5 +1,5 @@
 use core::panic;
-use std::{fs::File, path::{Path, PathBuf}};
+use std::{fs::{self, File}, path::{Path, PathBuf}};
 use crate::{config::{GitConfig, RGitIgnore}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, TreeObject}, staging::{StagingArea, StagingEntry}, utils::{is_valid_sha1, reference_exists, refs}};
 
 /// Estrutura que representa o repositório do projeto
@@ -15,6 +15,7 @@ pub struct Repository{
     pub refs_heads_path: PathBuf,
     pub merge_head_path: PathBuf,
     pub orig_head_path: PathBuf,
+    pub rebase_head_path: PathBuf,
     pub config: GitConfig
 }
 
@@ -26,6 +27,7 @@ impl Repository {
     const INDEX : &'static str = "index";
     const MERGE_HEAD : &'static str = "MERGE_HEAD";
     const ORIG_HEAD : &'static str = "ORIG_HEAD";
+    const REBASE_HEAD : &'static str = "REBASE_HEAD";
 
     pub fn new(path: &Path) -> Self {
         let minigit_path = path.join(Self::MINIGITDIR);
@@ -35,6 +37,7 @@ impl Repository {
         let merge_head_path = minigit_path.join(Self::MERGE_HEAD);
         let orig_head_path = minigit_path.join(Self::ORIG_HEAD);
         let refs_heads_path = minigit_path.join("refs").join("heads");
+        let rebase_head_path = minigit_path.join(Self::REBASE_HEAD);
 
         let config_bytes = std::fs::read(&config_path).unwrap_or_default();
 
@@ -46,6 +49,7 @@ impl Repository {
             refs_heads_path: refs_heads_path,
             merge_head_path: merge_head_path,
             orig_head_path: orig_head_path,
+            rebase_head_path: rebase_head_path,
             config: GitConfig::new(config_bytes)
         }
     }
@@ -62,7 +66,17 @@ impl Repository {
             } else if absolute_path.exists() {
                 let blob = BlobObject::from(&absolute_path);
                 let hash = self.create_object(&blob);
-                let entry = StagingEntry::from((&absolute_path, &hash, &self.worktree));
+                let last_content_change = fs::metadata(&absolute_path).unwrap().modified().unwrap()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos();
+                
+                let entry = StagingEntry {
+                    last_content_change,
+                    object_hash: hash,
+                    path: relative_path,
+                    mode_type: 0o100644, // arquivo normal
+                };
                 staging.update_or_create_entry(entry);
             } else {
                 staging.remove_entry_with_path(&relative_path);
@@ -162,8 +176,9 @@ impl Repository {
     pub fn update_head(&mut self, commit_id: &String) {
         let head_ref = self.get_head();
         let head_path = self.minigitdir.join(head_ref);
+        let index_file_path = head_path.join("index");
 
-        std::fs::write(&head_path, commit_id).unwrap();
+        std::fs::write(&index_file_path, commit_id).unwrap();
     }
 
     /// Muda o HEAD do repositório para o novo valor
@@ -418,7 +433,7 @@ mod staging;
 mod objects;
 mod utils;
 mod config;
-mod merge;
 mod status;
+mod checks;
 
 pub use commands::cli_main;

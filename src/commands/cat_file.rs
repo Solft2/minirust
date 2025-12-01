@@ -1,33 +1,43 @@
 use std::fs;
-use std::io::Read;
-use flate2::read::ZlibDecoder;
-use crate::Repository;
+use crate::utils::{find_current_repo, is_valid_sha1};
 
-/// TODO: Atualizar
-pub fn cmd_cat_file(hash: &str){
-    let repo = Repository::new(&std::env::current_dir().unwrap());
+pub fn cmd_cat_file(hash: &String){
+    match cat_file_command(hash) {
+        Ok(_) => {},
+        Err(err) => {
+            println!("{}", err);
+        }
+    }
+}
 
-    let(dir,file) = hash.split_at(2);
-    let path = repo.get_repository_path(&["objects", dir, file]);
+fn cat_file_command(hash: &String) -> Result<(), String> {
+    let repo = find_current_repo().ok_or("Não é um repositório minigit")?;
 
-    if !path.exists(){
-        println!("Não foi possível encontrar o objeto: {}", hash);
-        return;
+    if !is_valid_sha1(hash) {
+        return Err("Hash SHA-1 inválido".to_string());
     }
 
-    let compressed = fs::read(path).expect("Não foi possível ler o objeto");
-    let mut decoder = ZlibDecoder::new(&compressed[..]);
-    let mut decompressed = Vec::new();
+    let (dir, file_name) = hash.split_at(2);
+    let path = repo.minigitdir.join("objects").join(dir).join(file_name);
 
-    decoder.read_to_end(&mut decompressed).expect("Não foi possível descomprimir!");
+    if !path.exists() {
+        return Err("Objeto não encontrado".to_string());
+    }
 
-    let nul_pos = decompressed.iter().position(|&b| b == 0).expect("Formato inválido do objeto não identificado");
-    let header = &decompressed[..nul_pos];
-    let content = &decompressed[nul_pos + 1..];
+    let raw_object = fs::read(&path).unwrap();
+    let space_pos = raw_object.iter().position(|b| *b == b' ').unwrap();
+    let (object_type, remainder) = raw_object.split_at(space_pos);
 
-    let header_str = String::from_utf8_lossy(header);
-    let object_type = header_str.split_whitespace().next().unwrap_or("unknown");
+    let null_pos = remainder.iter().position(|b| *b == b'\0').unwrap();
+    let (_size_bytes, object_content) = remainder.split_at(null_pos + 1);
+
+    let object_type = String::from_utf8_lossy(object_type).to_string();
 
     println!("Tipo de objeto: {}", object_type);
-    println!("Conteúdo: \n{}", String::from_utf8_lossy(content));
+    println!("Tamanho do conteúdo: {} bytes", object_content.len());
+    println!("Conteúdo: \n{}", String::from_utf8_lossy(object_content));
+
+    Ok(())
+
 }
+

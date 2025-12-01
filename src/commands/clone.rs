@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use fs_extra::dir::{copy, CopyOptions};
 use crate::commands::checkout::{instanciate_commit};
 use crate::Repository;
+use crate::objects::RGitObjectTypes;
 use crate::utils::{find_repo};
 
 pub fn cmd_clone(repository_path: &str, destination_path: &str) {
@@ -32,9 +33,10 @@ pub fn execute_clone(repository_path: &str, destination_path: &str) -> Result<()
 
     let head_commit = new_repository.resolve_head();
 
-    let object = new_repository
+    let RGitObjectTypes::Commit(object) = new_repository
         .get_object(&head_commit)
-        .ok_or("Erro ao copiar diretório. Head commit do repositório não encontrado.")?;
+        .ok_or("Erro ao copiar diretório. Head commit do repositório não encontrado.")?
+        else { panic!("Objeto do head commit não é um commit."); };
 
     instanciate_commit(object, &mut new_repository);
     Ok(())
