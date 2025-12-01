@@ -6,6 +6,7 @@ use std::str::FromStr;
 use std::{path::PathBuf};
 
 use crate::Repository;
+use crate::objects::{CommitObject, RGitObjectTypes, tree};
 
 /// Uma entrada da staging area
 #[derive(Debug, Clone)]
@@ -122,4 +123,30 @@ fn parse_to<T: FromStr>(s: &str) -> T
         <T as FromStr>::Err: Debug
 {
     str::parse::<T>(s).expect("Deveria ser possível o parsing")
+}
+
+pub fn staging_area_from_commit(repository: &Repository, commit: &CommitObject) -> StagingArea {
+    let tree_hash = &commit.tree;
+    let RGitObjectTypes::Tree(tree_object) = repository
+        .get_object(tree_hash)
+        .unwrap()
+        else { panic!("Commit aponta para árvore inválida"); };
+
+    let tree_files = tree::get_tree_as_map(repository, &tree_object);
+    let relative_file_paths: Vec<String> = tree_files.keys().cloned().collect();
+
+    StagingArea {
+        entries: relative_file_paths.iter().map(|path| {
+            let full_path = repository.worktree.join(path);
+            let object_hash = tree_files.get(path).unwrap().clone();
+            let relative_path = full_path.strip_prefix(&repository.worktree).unwrap();
+
+            StagingEntry {
+                last_content_change: commit.timestamp,
+                mode_type: 0o100644, // arquivo normal
+                object_hash: object_hash.to_string(),
+                path: relative_path.to_path_buf(),
+            }
+        }).collect()
+    }
 }
