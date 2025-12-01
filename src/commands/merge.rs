@@ -7,7 +7,8 @@ use std::{
 use crate::{
     Repository,
     checks::{
-        ensure_merge_in_progress, ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_rebase_in_progress, ensure_no_uncommited_changes
+        ensure_merge_in_progress, ensure_no_detached_head, ensure_no_merge_in_progress,
+        ensure_no_rebase_in_progress, ensure_no_uncommited_changes,
     },
     commands::{checkout, rebase::create_conflict_blob},
     objects::{
@@ -17,7 +18,10 @@ use crate::{
     },
     staging::StagingTree,
     status::non_staged_files,
-    utils::{find_current_repo, merge_rebase::{abort as abort_merge, finish, start}},
+    utils::{
+        find_current_repo, is_valid_sha1,
+        merge_rebase::{abort as abort_merge, finish, start},
+    },
 };
 
 pub fn cmd_merge(branch_name: Option<&String>, abort: bool, continue_: bool) {
@@ -89,7 +93,7 @@ fn continue_merge(repo: &mut Repository) -> Result<(), String> {
     Ok(())
 }
 
-fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), String> {
+fn execute_merge(repo: &mut Repository, target_ref: &String) -> Result<(), String> {
     ensure_no_detached_head(&repo)?;
     ensure_no_merge_in_progress(&repo)?;
     ensure_no_rebase_in_progress(&repo)?;
@@ -100,20 +104,41 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
         return Err("Nada para fazer merge, repositório vazio.".to_string());
     }
 
-    let target_branch_path = repo
-        .minigitdir
-        .join("refs")
-        .join("heads")
-        .join(&branch_name)
-        .join("index");
-    if !target_branch_path.exists() {
-        return Err(format!("Branch {} não existe.", branch_name));
-    }
+    let target_hash = if is_valid_sha1(target_ref) {
+        let object = repo.get_object(target_ref).ok_or(format!(
+            "Objeto com hash '{}' não encontrado na pasta .minigit.",
+            target_ref
+        ))?;
 
-    let target_hash = std::fs::read_to_string(target_branch_path)
-        .map_err(|_| "Não foi possível ler a referência da branch alvo.")?
-        .trim()
-        .to_string();
+        match object {
+            RGitObjectTypes::Commit(_) => target_ref.clone(),
+            _ => {
+                return Err(format!(
+                    "O hash {} não se refere a um objeto do tipo commit. Só é possível fazer merge de commits.",
+                    target_ref,
+                ));
+            }
+        }
+    } else {
+        let target_branch_path = repo
+            .minigitdir
+            .join("refs")
+            .join("heads")
+            .join(target_ref)
+            .join("index");
+
+        if !target_branch_path.exists() {
+            return Err(format!(
+                "Referência '{}' não encontrada (não é branch nem hash válido).",
+                target_ref
+            ));
+        }
+
+        std::fs::read_to_string(target_branch_path)
+            .map_err(|_| "Não foi possível ler a referência da branch alvo.")?
+            .trim()
+            .to_string()
+    };
 
     // Branches iguais
     if current_head_hash == target_hash {
@@ -203,7 +228,7 @@ fn execute_merge(repo: &mut Repository, branch_name: &String) -> Result<(), Stri
         }
     }
 
-    let msg = format!("Merge branch '{}' into HEAD", branch_name);
+    let msg = format!("Merge branch '{}' into HEAD", target_ref);
     let author = format!(
         "{} <{}>",
         repo.config.get_username(),
