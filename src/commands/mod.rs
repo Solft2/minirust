@@ -12,6 +12,7 @@ pub mod ls_tree;
 pub mod config;
 pub mod clone;
 pub mod reset;
+pub mod status;
 pub mod rebase;
 pub mod diff;
 
@@ -116,6 +117,7 @@ pub enum Commands {
         /// 
         commit_reference: String
     },
+    Status
 }
 
 
@@ -152,6 +154,9 @@ pub fn cli_main() {
         Config { key, value } => config::cmd_config(key, value),
         HashObject { write, file } => hash_rust::cmd_hash_object(&file, write),
         CatFile { hash } => cat_file::cmd_cat_file(&hash),
+        WriteTree => tree_rust::cmd_write_tree(),
+        Reset { files } => reset::cmd_reset(files),
         Reset { mode, commit_reference } => reset::cmd_reset(mode, &commit_reference),
+        Status => status::cmd_status(),
     }
 }
