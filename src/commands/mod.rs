@@ -15,6 +15,7 @@ pub mod reset;
 pub mod status;
 pub mod rebase;
 pub mod diff;
+pub mod rm;
 
 use clap::{Parser, Subcommand};
 
@@ -72,6 +73,11 @@ pub enum Commands {
     /// Adiciona arquivos ao índice para o próximo commit
     Add {
         /// Lista de arquivos a serem adicionados
+        files: Vec<String>
+    },
+    /// Tira arquivos do índice para o próximo commit
+    Rm {
+        /// Lista de arquivos a serem removidos
         files: Vec<String>
     },
     /// Muda para o commit especificado
@@ -149,6 +155,7 @@ pub fn cli_main() {
         },
         Rebase { continue_, abort, new_base_branch } => {rebase::cmd_rebase(continue_, abort, new_base_branch)},
         Add { files } => add::cmd_add(files),
+        Rm { files } => rm::cmd_rm(files),
         Checkout { commit_reference } => checkout::cmd_checkout(&commit_reference),
         Commit { message } => commit::cmd_commit(message),
         LsTree { tree_id } => ls_tree::cmd_ls_tree(tree_id),

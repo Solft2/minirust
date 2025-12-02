@@ -24,7 +24,7 @@ fn cmd_add_result(files: Vec<String>) -> Result<(), String> {
 }
 
 /// Transforma paths relativos ao diretório atual em paths relativos à raiz do repositório
-fn get_paths_relative_to_repository(repo: &Repository, files: &Vec<String>) -> Vec<PathBuf> {
+pub fn get_paths_relative_to_repository(repo: &Repository, files: &Vec<String>) -> Vec<PathBuf> {
     let current_dir = get_current_dir();
 
     files.into_iter().map(|f| {
@@ -43,7 +43,7 @@ fn filter_invalid_paths(repo: &Repository, paths: &Vec<PathBuf>) -> Vec<PathBuf>
         .iter()
         .filter(|path| {
             let absolute_path = repo.worktree.join(path);
-            let is_valid = absolute_path.exists() && absolute_path.is_file();
+            let is_valid = !absolute_path.exists() || absolute_path.is_file();
             if !is_valid {
                 println!("Aviso: {:?} não é um arquivo regular e será ignorado", path);
             }
