@@ -113,6 +113,16 @@ impl StagingArea {
     }
 }
 
+pub fn rewrite_index_from_commit_id(repo: &mut Repository, commit_id: &String) {
+    let RGitObjectTypes::Commit(commit_object) = repo
+        .get_object(commit_id)
+        .unwrap()
+        else { panic!("ID de commit inválido ao reescrever índice"); };
+
+    let staging_area = staging_area_from_commit(repo, &commit_object);
+    rewrite_index(repo, &staging_area);
+}
+
 pub fn rewrite_index(repo: &mut Repository, staging_area: &StagingArea) {
     let index_file_path = repo.minigitdir.join(Repository::INDEX);
     std::fs::write(&index_file_path, staging_area.serialize()).unwrap();

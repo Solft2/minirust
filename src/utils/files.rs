@@ -6,6 +6,13 @@ pub fn create_file(path: &PathBuf, content: &Vec<u8>) {
 }
 
 pub fn create_dir(path: &PathBuf) {
+    if path.exists() {
+        if path.is_dir() {
+            return;
+        } else {
+            fs::remove_file(path).expect("Deveria remover o arquivo");
+        }
+    }
     fs::create_dir(path).expect("Deveria criar o diretório");
 }
 

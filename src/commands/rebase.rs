@@ -1,7 +1,7 @@
 use core::panic;
 use std::{collections::{HashMap, HashSet}, path::PathBuf, str::FromStr};
 
-use crate::{Repository, checks::{ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_non_staged_files, ensure_no_rebase_in_progress, ensure_no_uncommited_changes, ensure_rebase_in_progress}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files}, staging::StagingTree, utils::{find_current_repo, merge_rebase}};
+use crate::{Repository, checks::{ensure_no_detached_head, ensure_no_merge_in_progress, ensure_no_non_staged_files, ensure_no_rebase_in_progress, ensure_no_uncommited_changes, ensure_rebase_in_progress}, objects::{BlobObject, CommitObject, RGitObject, RGitObjectTypes, create_commit_object_from_index, create_tree_object_from_staging_tree, get_commit_tree_as_map, get_tree_as_map, instanciate_tree_files}, staging::{StagingTree, rewrite_index_from_commit_id}, utils::{find_current_repo, merge_rebase}};
 
 pub fn cmd_rebase(continue_: bool, abort: bool, new_base_reference: Option<String>) {
     match cmd_rebase_result(continue_, abort, new_base_reference) {
@@ -72,6 +72,7 @@ fn continue_rebase(repo: &mut Repository) -> Result<(), String> {
 
     let commit_hash = create_commit_object_from_index(repo, original_commit.message.clone());
     repo.update_curr_branch(&commit_hash);
+    rewrite_index_from_commit_id(repo, &commit_hash);
 
     apply_commits(repo, commits_to_apply[1..].to_vec(), repo.get_head())?;
     Ok(())
@@ -132,8 +133,9 @@ fn apply_commits(repo: &mut Repository, commits_to_apply: Vec<CommitObject>, cur
         let (merge_tree_id, conflicts) = create_merge_tree(repo, &commit, &current_base_head_commit);
         
         if conflicts.is_empty() {
-            let commit_id = create_rebase_commit(repo, &commit, current_base_head.clone(), merge_tree_id);
-            repo.update_branch_ref(&current_branch_ref_path, &commit_id);
+            let rebase_commit_id = create_rebase_commit(repo, &commit, current_base_head.clone(), merge_tree_id);
+            repo.update_branch_ref(&current_branch_ref_path, &rebase_commit_id);
+            rewrite_index_from_commit_id(repo, &rebase_commit_id);
         } else {
             let remaining_commits: Vec<CommitObject> = commits_to_apply[index..].to_vec();
             let RGitObjectTypes::Tree(merge_tree_obj) = repo
