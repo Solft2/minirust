@@ -1,7 +1,6 @@
 pub mod init;
 pub mod hash_rust;
 pub mod cat_file;
-pub mod tree_rust;
 pub mod branch;
 pub mod commit;
 pub mod log;
